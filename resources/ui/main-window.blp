@@ -1,0 +1,84 @@
+using Gtk 4.0;
+
+template $ZincWindow: Gtk.ApplicationWindow {
+  title: "Zinc IDE";
+  default-width: 1200;
+  default-height: 800;
+
+  Gtk.Box {
+    orientation: vertical;
+
+    Gtk.HeaderBar header_bar {
+      [start]
+      Gtk.Button open_folder_button {
+        icon-name: "folder-open-symbolic";
+        tooltip-text: "Open Folder";
+      }
+
+      [start]
+      Gtk.Button open_file_button {
+        icon-name: "document-open-symbolic";
+        tooltip-text: "Open File";
+      }
+
+      [title]
+      Gtk.Label title_label {
+        label: "Zinc IDE";
+        styles ["title"]
+      }
+    }
+
+    Gtk.Paned paned {
+      orientation: horizontal;
+      shrink-start-child: false;
+      shrink-end-child: false;
+      position: 250;
+      vexpand: true;
+
+      [start]
+      Gtk.ScrolledWindow tree_scroll {
+        width-request: 200;
+        hscrollbar-policy: automatic;
+        vscrollbar-policy: automatic;
+
+        Gtk.TreeView file_tree {
+          headers-visible: false;
+          enable-search: true;
+        }
+      }
+
+      [end]
+      Gtk.Box editor_wrap {
+        orientation: horizontal;
+        vexpand: true;
+        hexpand: true;
+
+        Gtk.DrawingArea line_gutter {
+          width-request: 54;     // enough for 4-5 digits; tweak later
+          vexpand: true;
+        }
+
+        Gtk.ScrolledWindow code_scroll {
+          hexpand: true;
+          vexpand: true;
+          hscrollbar-policy: automatic;
+          vscrollbar-policy: automatic;
+
+          Gtk.TextView code_view {
+            monospace: true;
+            editable: true;
+            left-margin: 8;
+            right-margin: 8;
+            top-margin: 8;
+            bottom-margin: 8;
+          }
+        }
+      }
+    }
+
+    Gtk.Statusbar statusbar {
+      margin-start: 4;
+      margin-end: 4;
+    }
+  }
+}

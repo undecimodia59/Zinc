@@ -1,0 +1,99 @@
+/* Zinc IDE - Dark Theme */
+
+/* Main window */
+window {
+    background-color: #1e1e1e;
+}
+
+/* Header bar */
+headerbar {
+    background-color: #252526;
+    border-bottom: 1px solid #3c3c3c;
+}
+
+headerbar button {
+    background: transparent;
+    border: none;
+    padding: 6px;
+}
+
+headerbar button:hover {
+    background-color: #3c3c3c;
+}
+
+/* File tree */
+treeview {
+    background-color: #252526;
+    color: #cccccc;
+}
+
+treeview:selected {
+    background-color: #094771;
+    color: #ffffff;
+}
+
+treeview row:hover {
+    background-color: #2a2d2e;
+}
+
+/* Editor */
+textview {
+    background-color: #1e1e1e;
+    color: #d4d4d4;
+}
+
+textview text {
+    background-color: #1e1e1e;
+    color: #d4d4d4;
+}
+
+textview text selection {
+    background-color: #264f78;
+    color: #ffffff;
+}
+
+/* Scrollbar */
+scrollbar {
+    background-color: #1e1e1e;
+}
+
+scrollbar slider {
+    background-color: #424242;
+    border-radius: 4px;
+    min-width: 8px;
+    min-height: 8px;
+}
+
+scrollbar slider:hover {
+    background-color: #4f4f4f;
+}
+
+/* Status bar */
+statusbar {
+    background-color: #007acc;
+    color: #ffffff;
+    padding: 2px 8px;
+}
+
+/* Paned separator */
+paned > separator {
+    background-color: #3c3c3c;
+    min-width: 1px;
+    min-height: 1px;
+}
+
+paned > separator:hover {
+    background-color: #007acc;
+}
+
+/* Tooltips */
+tooltip {
+    background-color: #252526;
+    color: #cccccc;
+    border: 1px solid #454545;
+}
+
+/* General text */
+* {
+    font-family: "JetBrains Mono", "Fira Code", "Source Code Pro", monospace;
+}
