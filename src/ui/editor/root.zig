@@ -80,9 +80,11 @@ pub fn create(cfg: *const config.Config) EditorResult {
     gutter.setWidthForView(code_view, line_gutter, cfg);
     gutter.queueRedrawSoon();
 
-    const overlay = gtk.Overlay.new();
-    overlay.setChild(code_view.as(gtk.Widget));
-    code_scroll.setChild(overlay.as(gtk.Widget));
+    // Initialize vim mode on startup if enabled in config.
+    vim_mode_enabled = cfg.editor.vim_mode;
+    if (vim_mode_enabled) {
+        vim.init(code_view);
+    }
 
     const line_highlight = gtk.DrawingArea.new();
     line_highlight.setContentWidth(1);
@@ -93,6 +95,12 @@ pub fn create(cfg: *const config.Config) EditorResult {
     line_highlight.as(gtk.Widget).setValign(.fill);
     line_highlight.as(gtk.Widget).setCanTarget(0);
     line_highlight.as(gtk.Widget).setCanFocus(0);
+    code_scroll.setChild(code_view.as(gtk.Widget));
+
+    const overlay = gtk.Overlay.new();
+    overlay.as(gtk.Widget).setHexpand(1);
+    overlay.as(gtk.Widget).setVexpand(1);
+    overlay.setChild(code_scroll.as(gtk.Widget));
     overlay.addOverlay(line_highlight.as(gtk.Widget));
     overlay.setMeasureOverlay(line_highlight.as(gtk.Widget), 1);
     overlay.setClipOverlay(line_highlight.as(gtk.Widget), 0);
@@ -101,7 +109,7 @@ pub fn create(cfg: *const config.Config) EditorResult {
     line_highlight.as(gtk.Widget).setVisible(@intFromBool(cfg.editor.highlight_current_line));
 
     root.append(line_gutter.as(gtk.Widget));
-    root.append(code_scroll.as(gtk.Widget));
+    root.append(overlay.as(gtk.Widget));
 
     // Draw func + invalidation hooks live in the gutter module.
     gutter.init(line_gutter, code_view, code_scroll);

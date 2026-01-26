@@ -77,6 +77,8 @@ Vim mode is disabled by default. Enable it in settings or set `"vim_mode": true`
 
 ### Normal Mode
 
+#### Movement
+
 | Key | Action |
 |-----|--------|
 | `h`, `Left` | Move left |
@@ -85,11 +87,36 @@ Vim mode is disabled by default. Enable it in settings or set `"vim_mode": true`
 | `l`, `Right` | Move right |
 | `w` | Move to next word start |
 | `b` | Move to previous word start |
+| `e` | Move to end of word |
 | `0` | Move to line start |
+| `^` | Move to first non-blank character |
 | `$` | Move to line end |
 | `gg` | Move to file start |
 | `G` | Move to file end |
 | `[n]G` | Go to line n |
+| `%` | Jump to matching bracket `()[]{}` or quote `"'` |
+| `f{char}` | Find character forward on line |
+| `F{char}` | Find character backward on line |
+| `t{char}` | Till character forward (stop before) |
+| `T{char}` | Till character backward (stop after) |
+| `;` | Repeat last `f`/`F`/`t`/`T` |
+| `,` | Repeat last `f`/`F`/`t`/`T` in opposite direction |
+
+#### Search
+
+| Key | Action |
+|-----|--------|
+| `/` | Search forward |
+| `?` | Search backward |
+| `n` | Next search result |
+| `N` | Previous search result |
+| `*` | Search word under cursor forward |
+| `#` | Search word under cursor backward |
+
+#### Mode Switching
+
+| Key | Action |
+|-----|--------|
 | `i` | Enter Insert mode |
 | `a` | Enter Insert mode after cursor |
 | `A` | Enter Insert mode at line end |
@@ -97,6 +124,12 @@ Vim mode is disabled by default. Enable it in settings or set `"vim_mode": true`
 | `O` | Open line above, enter Insert |
 | `v` | Enter Visual mode |
 | `V` | Enter Visual Line mode |
+| `:` | Enter Command mode |
+
+#### Operators
+
+| Key | Action |
+|-----|--------|
 | `d` | Delete (with motion) |
 | `dd` | Delete entire line |
 | `y` | Yank (copy) |
@@ -106,7 +139,11 @@ Vim mode is disabled by default. Enable it in settings or set `"vim_mode": true`
 | `p` | Paste after cursor |
 | `P` | Paste before cursor |
 | `x` | Delete character under cursor |
-| `:` | Enter Command mode |
+
+#### Other
+
+| Key | Action |
+|-----|--------|
 | `[count]` | Repeat next motion/operator |
 | `Escape` | Cancel pending operator |
 

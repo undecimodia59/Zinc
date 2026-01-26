@@ -376,6 +376,7 @@ const EditorConfigFile = struct {
     auto_indent: ?bool = null,
     auto_save: ?bool = null,
     auto_save_interval_ms: ?u32 = null,
+    vim_mode: ?bool = null,
 };
 
 const ThemeConfigFile = struct {
@@ -422,6 +423,7 @@ fn applyConfigFile(self: *Config, parsed: ConfigFile) !bool {
         if (e.auto_indent) |v| self.editor.auto_indent = v;
         if (e.auto_save) |v| self.editor.auto_save = v;
         if (e.auto_save_interval_ms) |v| self.editor.auto_save_interval_ms = v;
+        if (e.vim_mode) |v| self.editor.vim_mode = v;
     }
 
     if (parsed.theme) |t| {
@@ -707,7 +709,8 @@ fn writeConfigJsonc(self: *const Config, writer: anytype) !void {
     try writer.print("    \"word_wrap\": {s},\n", .{boolString(self.editor.word_wrap)});
     try writer.print("    \"auto_indent\": {s},\n", .{boolString(self.editor.auto_indent)});
     try writer.print("    \"auto_save\": {s},\n", .{boolString(self.editor.auto_save)});
-    try writer.print("    \"auto_save_interval_ms\": {d}\n", .{self.editor.auto_save_interval_ms});
+    try writer.print("    \"auto_save_interval_ms\": {d},\n", .{self.editor.auto_save_interval_ms});
+    try writer.print("    \"vim_mode\": {s}\n", .{boolString(self.editor.vim_mode)});
     try writer.writeAll("  },\n\n");
 
     try writer.writeAll("  // Theme settings\n");

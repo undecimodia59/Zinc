@@ -1,10 +1,10 @@
 //! Vim mode implementation for Zinc editor
 //!
-//! Provides modal editing with Normal, Insert, Visual, and Command modes.
+//! Provides modal editing with Normal, Insert, Visual, Command, and Search modes.
 //!
 //! ## Supported Commands
 //!
-//! ### Normal Mode
+//! ### Normal Mode - Movement
 //! | Key | Action |
 //! |-----|--------|
 //! | h, Left | Move left |
@@ -13,39 +13,60 @@
 //! | l, Right | Move right |
 //! | w | Move to next word start |
 //! | b | Move to previous word start |
+//! | e | Move to end of word |
 //! | 0 | Move to line start |
+//! | ^ | Move to first non-blank |
 //! | $ | Move to line end |
 //! | gg | Move to file start |
 //! | G | Move to file end |
-//! | i | Enter Insert mode |
-//! | a | Enter Insert mode after cursor |
-//! | A | Enter Insert mode at line end |
-//! | o | Open line below, enter Insert |
-//! | O | Open line above, enter Insert |
-//! | v | Enter Visual mode |
-//! | V | Enter Visual Line mode |
-//! | d | Delete (with motion or selection) |
-//! | y | Yank (copy to clipboard) |
-//! | p | Paste after cursor |
-//! | P | Paste before cursor |
-//! | x | Delete character under cursor |
-//! | dd | Delete entire line |
-//! | yy | Yank entire line |
-//! | : | Enter Command mode |
-//! | [count] | Prefix for repeat count |
+//! | % | Jump to matching bracket/quote |
+//! | f{c} | Find char forward |
+//! | F{c} | Find char backward |
+//! | t{c} | Till char forward |
+//! | T{c} | Till char backward |
+//! | ; | Repeat last f/F/t/T |
+//! | , | Repeat f/F/t/T opposite |
 //!
-//! ### Insert Mode
+//! ### Normal Mode - Search
 //! | Key | Action |
 //! |-----|--------|
-//! | Escape | Return to Normal mode |
+//! | / | Search forward |
+//! | ? | Search backward |
+//! | n | Next search result |
+//! | N | Previous search result |
+//! | * | Search word under cursor |
+//! | # | Search word backward |
+//!
+//! ### Normal Mode - Editing
+//! | Key | Action |
+//! |-----|--------|
+//! | i | Enter Insert mode |
+//! | a | Insert after cursor |
+//! | A | Insert at line end |
+//! | o | Open line below |
+//! | O | Open line above |
+//! | v | Enter Visual mode |
+//! | V | Enter Visual Line mode |
+//! | d | Delete (with motion) |
+//! | dd | Delete line |
+//! | y | Yank (copy) |
+//! | yy | Yank line |
+//! | c | Change (delete + insert) |
+//! | cc | Change line |
+//! | p | Paste after |
+//! | P | Paste before |
+//! | x | Delete char |
+//! | : | Command mode |
+//! | [count] | Repeat count |
 //!
 //! ### Visual Mode
 //! | Key | Action |
 //! |-----|--------|
-//! | Escape | Return to Normal mode |
+//! | Escape | Return to Normal |
 //! | d | Delete selection |
 //! | y | Yank selection |
-//! | w, b | Extend selection by word |
+//! | c | Change selection |
+//! | Movement | Extend selection |
 //!
 //! ### Command Mode
 //! | Command | Action |
@@ -65,6 +86,7 @@ const app = @import("../app.zig");
 const command = @import("command.zig");
 const motions = @import("motions.zig");
 const operators = @import("operators.zig");
+const search = @import("search.zig");
 
 // Re-export for other modules
 pub const Motion = motions.Motion;
@@ -76,6 +98,16 @@ pub const Mode = enum {
     visual,
     visual_line,
     command,
+    search,
+};
+
+/// Pending character find type (f/F/t/T)
+pub const PendingFind = enum {
+    none,
+    f, // find forward
+    F, // find backward
+    t, // till forward
+    T, // till backward
 };
 
 pub const State = struct {
@@ -83,6 +115,9 @@ pub const State = struct {
     count: u32 = 0,
     pending_operator: Operator = .none,
     pending_g: bool = false,
+    pending_find: PendingFind = .none,
+    last_find_char: u32 = 0,
+    last_find_type: PendingFind = .none,
     visual_start: ?gtk.TextIter = null,
     command_buffer: [256]u8 = undefined,
     command_len: usize = 0,
@@ -91,6 +126,7 @@ pub const State = struct {
         self.count = 0;
         self.pending_operator = .none;
         self.pending_g = false;
+        self.pending_find = .none;
     }
 
     pub fn getCount(self: *State) u32 {
@@ -150,7 +186,79 @@ pub fn handleKey(
         .insert => false, // Let GTK handle insert mode
         .visual, .visual_line => handleVisualMode(view, buffer, keyval, modifiers),
         .command => command.handleKey(view, keyval),
+        .search => search.handleKey(view, keyval),
     };
+}
+
+var pending_scroll: ?ScrollRequest = null;
+var scroll_idle_active: bool = false;
+
+const ScrollRequest = struct {
+    view: *gtk.TextView,
+    yalign: f64,
+};
+
+fn scrollToCursor(view: *gtk.TextView, yalign: f64) void {
+    const glib = @import("glib");
+    pending_scroll = .{ .view = view, .yalign = yalign };
+    if (scroll_idle_active) return;
+    scroll_idle_active = true;
+    _ = glib.idleAddFull(
+        glib.PRIORITY_DEFAULT_IDLE,
+        struct {
+            fn cb(_: ?*anyopaque) callconv(.c) c_int {
+                scroll_idle_active = false;
+                const req = pending_scroll orelse return 0;
+                pending_scroll = null;
+                if (!scrollToCursorViaAdjustment(req.view, req.yalign)) {
+                    const buffer = req.view.getBuffer();
+                    var iter: gtk.TextIter = undefined;
+                    buffer.getIterAtMark(&iter, buffer.getInsert());
+                    _ = req.view.scrollToIter(&iter, 0.0, 1, 0.0, req.yalign);
+                    req.view.scrollMarkOnscreen(buffer.getInsert());
+                }
+                return 0;
+            }
+        }.cb,
+        null,
+        null,
+    );
+}
+
+fn scrollToCursorViaAdjustment(view: *gtk.TextView, yalign: f64) bool {
+    const s = app.state orelse return false;
+    const scroll = s.code_scroll;
+    const vadj = scroll.getVadjustment();
+
+    const buffer = view.getBuffer();
+    var iter: gtk.TextIter = undefined;
+    buffer.getIterAtMark(&iter, buffer.getInsert());
+    iter.setLineOffset(0);
+
+    var line_y: c_int = 0;
+    var line_h: c_int = 0;
+    view.getLineYrange(&iter, &line_y, &line_h);
+
+    var rect: gdk.Rectangle = undefined;
+    view.getVisibleRect(&rect);
+
+    const visible_h: f64 = @floatFromInt(rect.f_height);
+    const line_y_f: f64 = @floatFromInt(line_y);
+    const line_h_f: f64 = @floatFromInt(line_h);
+
+    const target_top = line_y_f - (visible_h - line_h_f) * yalign;
+
+    const lower = vadj.getLower();
+    const upper = vadj.getUpper();
+    const page = vadj.getPageSize();
+    const max = if (upper > page) upper - page else lower;
+
+    var value = target_top;
+    if (value < lower) value = lower;
+    if (value > max) value = max;
+
+    vadj.setValue(value);
+    return true;
 }
 
 fn handleNormalMode(
@@ -161,11 +269,37 @@ fn handleNormalMode(
 ) bool {
     _ = modifiers;
 
+    // Handle pending f/F/t/T command (waiting for character)
+    if (state.pending_find != .none) {
+        const find_type = state.pending_find;
+        state.pending_find = .none;
+
+        if (keyval >= 0x20 and keyval <= 0x7e) {
+            const char: u32 = keyval;
+            state.last_find_char = char;
+            state.last_find_type = find_type;
+
+            const found = switch (find_type) {
+                .f => motions.findCharForward(buffer, char, state.getCount(), false),
+                .t => motions.findCharForward(buffer, char, state.getCount(), true),
+                .F => motions.findCharBackward(buffer, char, state.getCount(), false),
+                .T => motions.findCharBackward(buffer, char, state.getCount(), true),
+                .none => false,
+            };
+            _ = found;
+            state.reset();
+            return true;
+        }
+        state.reset();
+        return false;
+    }
+
     // Handle pending g command
     if (state.pending_g) {
         state.pending_g = false;
         if (keyval == 'g') {
             motions.moveTo(buffer, .file_start, state.getCount());
+            scrollToCursor(view, 0.0);
             state.reset();
             return true;
         }
@@ -240,8 +374,10 @@ fn handleNormalMode(
         'G' => {
             if (state.count > 0) {
                 motions.gotoLine(buffer, state.count);
+                scrollToCursor(view, 0.5);
             } else {
                 motions.moveTo(buffer, .file_end, 1);
+                scrollToCursor(view, 1.0);
             }
             state.reset();
             return true;
@@ -335,6 +471,109 @@ fn handleNormalMode(
             return true;
         },
 
+        // Search
+        '/' => {
+            search.enter(true);
+            return true;
+        },
+        '?' => {
+            search.enter(false);
+            return true;
+        },
+        'n' => {
+            if (search.search_forward) {
+                _ = search.findNext(buffer);
+            } else {
+                _ = search.findPrev(buffer);
+            }
+            state.reset();
+            return true;
+        },
+        'N' => {
+            if (search.search_forward) {
+                _ = search.findPrev(buffer);
+            } else {
+                _ = search.findNext(buffer);
+            }
+            state.reset();
+            return true;
+        },
+        '*' => {
+            _ = search.searchWordUnderCursor(buffer, true);
+            state.reset();
+            return true;
+        },
+        '#' => {
+            _ = search.searchWordUnderCursor(buffer, false);
+            state.reset();
+            return true;
+        },
+
+        // Bracket matching
+        '%' => {
+            _ = motions.matchBracket(buffer);
+            state.reset();
+            return true;
+        },
+
+        // Character find
+        'f' => {
+            state.pending_find = .f;
+            return true;
+        },
+        'F' => {
+            state.pending_find = .F;
+            return true;
+        },
+        't' => {
+            state.pending_find = .t;
+            return true;
+        },
+        'T' => {
+            state.pending_find = .T;
+            return true;
+        },
+        ';' => {
+            // Repeat last f/F/t/T
+            if (state.last_find_type != .none and state.last_find_char != 0) {
+                _ = switch (state.last_find_type) {
+                    .f => motions.findCharForward(buffer, state.last_find_char, state.getCount(), false),
+                    .t => motions.findCharForward(buffer, state.last_find_char, state.getCount(), true),
+                    .F => motions.findCharBackward(buffer, state.last_find_char, state.getCount(), false),
+                    .T => motions.findCharBackward(buffer, state.last_find_char, state.getCount(), true),
+                    .none => false,
+                };
+            }
+            state.reset();
+            return true;
+        },
+        ',' => {
+            // Repeat last f/F/t/T in opposite direction
+            if (state.last_find_type != .none and state.last_find_char != 0) {
+                _ = switch (state.last_find_type) {
+                    .f => motions.findCharBackward(buffer, state.last_find_char, state.getCount(), false),
+                    .t => motions.findCharBackward(buffer, state.last_find_char, state.getCount(), true),
+                    .F => motions.findCharForward(buffer, state.last_find_char, state.getCount(), false),
+                    .T => motions.findCharForward(buffer, state.last_find_char, state.getCount(), true),
+                    .none => false,
+                };
+            }
+            state.reset();
+            return true;
+        },
+
+        // Additional motions
+        '^' => {
+            motions.moveToFirstNonBlank(buffer);
+            state.reset();
+            return true;
+        },
+        'e' => {
+            motions.moveToWordEnd(buffer, state.getCount());
+            state.reset();
+            return true;
+        },
+
         else => {
             state.reset();
             return false;
@@ -355,6 +594,7 @@ fn handleVisualMode(
         state.pending_g = false;
         if (keyval == 'g') {
             motions.extendSelection(view, buffer, .file_start, 1);
+            scrollToCursor(view, 0.0);
             state.reset();
             return true;
         }
@@ -406,6 +646,7 @@ fn handleVisualMode(
         },
         'G' => {
             motions.extendSelection(view, buffer, .file_end, 1);
+            scrollToCursor(view, 1.0);
             state.reset();
             return true;
         },
@@ -500,12 +741,18 @@ pub fn updateStatusBar() void {
         return;
     }
 
+    if (state.mode == .search) {
+        // Search status is handled by search module
+        return;
+    }
+
     const mode_str: [:0]const u8 = switch (state.mode) {
         .normal => "-- NORMAL --",
         .insert => "-- INSERT --",
         .visual => "-- VISUAL --",
         .visual_line => "-- VISUAL LINE --",
         .command => ":",
+        .search => "/",
     };
     s.setStatus(mode_str);
 }
@@ -538,5 +785,6 @@ pub fn getModeName() [:0]const u8 {
         .visual => "VISUAL",
         .visual_line => "V-LINE",
         .command => "COMMAND",
+        .search => "SEARCH",
     };
 }

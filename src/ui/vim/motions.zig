@@ -5,6 +5,16 @@ const gtk = @import("gtk");
 
 const root = @import("root.zig");
 
+/// Bracket/quote pairs for % matching
+const pairs = [_][2]u32{
+    .{ '(', ')' },
+    .{ '[', ']' },
+    .{ '{', '}' },
+    .{ '<', '>' },
+    .{ '"', '"' },
+    .{ '\'', '\'' },
+};
+
 /// Movement types
 pub const Motion = enum {
     left,
@@ -126,4 +136,187 @@ pub fn extendSelection(view: *gtk.TextView, buffer: *gtk.TextBuffer, motion: Mot
 
     // Select from anchor to cursor (order matters for cursor position)
     buffer.selectRange(&anchor, &cursor);
+}
+
+/// Jump to matching bracket/quote (%)
+pub fn matchBracket(buffer: *gtk.TextBuffer) bool {
+    var iter: gtk.TextIter = undefined;
+    buffer.getIterAtMark(&iter, buffer.getInsert());
+
+    const char = iter.getChar();
+
+    // Find which pair this character belongs to
+    for (pairs) |pair| {
+        if (char == pair[0]) {
+            // Opening bracket - search forward
+            if (findMatchingForward(&iter, pair[0], pair[1])) {
+                buffer.placeCursor(&iter);
+                return true;
+            }
+            return false;
+        } else if (char == pair[1]) {
+            // Closing bracket - search backward
+            if (findMatchingBackward(&iter, pair[0], pair[1])) {
+                buffer.placeCursor(&iter);
+                return true;
+            }
+            return false;
+        }
+    }
+
+    // Not on a bracket - search forward on line for one
+    const line_end = iter.getLine();
+    while (iter.getLine() == line_end) {
+        const c = iter.getChar();
+        for (pairs) |pair| {
+            if (c == pair[0] or c == pair[1]) {
+                buffer.placeCursor(&iter);
+                return matchBracket(buffer);
+            }
+        }
+        if (iter.forwardChar() == 0) break;
+    }
+
+    return false;
+}
+
+fn findMatchingForward(iter: *gtk.TextIter, open: u32, close: u32) bool {
+    var depth: i32 = 1;
+
+    // For quotes, just find next occurrence
+    if (open == close) {
+        if (iter.forwardChar() == 0) return false;
+        while (true) {
+            if (iter.getChar() == close) return true;
+            if (iter.forwardChar() == 0) return false;
+        }
+    }
+
+    // For brackets, track nesting
+    while (iter.forwardChar() != 0) {
+        const c = iter.getChar();
+        if (c == open) {
+            depth += 1;
+        } else if (c == close) {
+            depth -= 1;
+            if (depth == 0) return true;
+        }
+    }
+    return false;
+}
+
+fn findMatchingBackward(iter: *gtk.TextIter, open: u32, close: u32) bool {
+    var depth: i32 = 1;
+
+    // For quotes, just find previous occurrence
+    if (open == close) {
+        if (iter.backwardChar() == 0) return false;
+        while (true) {
+            if (iter.getChar() == open) return true;
+            if (iter.backwardChar() == 0) return false;
+        }
+    }
+
+    // For brackets, track nesting
+    while (iter.backwardChar() != 0) {
+        const c = iter.getChar();
+        if (c == close) {
+            depth += 1;
+        } else if (c == open) {
+            depth -= 1;
+            if (depth == 0) return true;
+        }
+    }
+    return false;
+}
+
+/// Find character on current line (f command)
+pub fn findCharForward(buffer: *gtk.TextBuffer, char: u32, count: u32, before: bool) bool {
+    var iter: gtk.TextIter = undefined;
+    buffer.getIterAtMark(&iter, buffer.getInsert());
+
+    const start_line = iter.getLine();
+    var found: u32 = 0;
+
+    while (iter.forwardChar() != 0 and iter.getLine() == start_line) {
+        if (iter.getChar() == char) {
+            found += 1;
+            if (found >= count) {
+                if (before) {
+                    _ = iter.backwardChar();
+                }
+                buffer.placeCursor(&iter);
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/// Find character backward on current line (F command)
+pub fn findCharBackward(buffer: *gtk.TextBuffer, char: u32, count: u32, after: bool) bool {
+    var iter: gtk.TextIter = undefined;
+    buffer.getIterAtMark(&iter, buffer.getInsert());
+
+    const start_line = iter.getLine();
+    var found: u32 = 0;
+
+    while (iter.backwardChar() != 0 and iter.getLine() == start_line) {
+        if (iter.getChar() == char) {
+            found += 1;
+            if (found >= count) {
+                if (after) {
+                    _ = iter.forwardChar();
+                }
+                buffer.placeCursor(&iter);
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/// Move to first non-blank character on line (^)
+pub fn moveToFirstNonBlank(buffer: *gtk.TextBuffer) void {
+    var iter: gtk.TextIter = undefined;
+    buffer.getIterAtMark(&iter, buffer.getInsert());
+    iter.setLineOffset(0);
+
+    while (iter.endsLine() == 0) {
+        const c = iter.getChar();
+        if (c != ' ' and c != '\t') break;
+        if (iter.forwardChar() == 0) break;
+    }
+
+    buffer.placeCursor(&iter);
+}
+
+/// Move to end of word (e command)
+pub fn moveToWordEnd(buffer: *gtk.TextBuffer, count: u32) void {
+    var iter: gtk.TextIter = undefined;
+    buffer.getIterAtMark(&iter, buffer.getInsert());
+
+    var i: u32 = 0;
+    while (i < count) : (i += 1) {
+        // Skip current position
+        if (iter.forwardChar() == 0) break;
+
+        // Skip whitespace
+        while (iter.isEnd() == 0) {
+            const c = iter.getChar();
+            if (c != ' ' and c != '\t' and c != '\n') break;
+            if (iter.forwardChar() == 0) break;
+        }
+
+        // Move to end of word
+        while (iter.isEnd() == 0) {
+            var next = iter;
+            if (next.forwardChar() == 0) break;
+            const c = next.getChar();
+            if (c == ' ' or c == '\t' or c == '\n') break;
+            iter = next;
+        }
+    }
+
+    buffer.placeCursor(&iter);
 }

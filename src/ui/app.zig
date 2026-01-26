@@ -35,6 +35,7 @@ pub const AppState = struct {
 
     // Editor components
     code_view: *gtk.TextView,
+    code_scroll: *gtk.ScrolledWindow,
     config: *config.Config,
     line_highlight: *gtk.DrawingArea,
 
@@ -165,6 +166,7 @@ pub fn onActivate(app_ptr: *gtk.Application, user_data: *gtk.Application) callco
         .tree_store = tree_result.tree_store,
         .file_tree_scroll = tree_result.scroll,
         .code_view = editor_result.text_view,
+        .code_scroll = editor_result.scroll,
         .config = app_config,
         .line_highlight = editor_result.line_highlight,
         .current_path = null,

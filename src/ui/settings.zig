@@ -139,6 +139,7 @@ fn onApplyClicked(_: *gtk.Button, state: *SettingsState) callconv(.c) void {
         std.debug.print("Failed to save config: {}\n", .{err});
     };
     state.apply_fn(state.apply_ctx, state.cfg);
+    state.window.as(gtk.Window).close();
 }
 
 fn onCloseClicked(_: *gtk.Button, state: *SettingsState) callconv(.c) void {
@@ -288,7 +289,7 @@ fn addStructSection(
     inline for (fields) |field| {
         const field_path = path_prefix ++ "." ++ field.name;
         const meta = getFieldMeta(field_path);
-    const label_text = meta.label;
+        const label_text = meta.label;
         const field_ptr = &@field(struct_ptr.*, field.name);
 
         const label = makeLabel(allocator, label_text);
