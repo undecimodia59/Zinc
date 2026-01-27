@@ -3,4 +3,3 @@ zig-out/
 *.o
 .claude
 test_icons/
-todo.md
