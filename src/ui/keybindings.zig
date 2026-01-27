@@ -32,6 +32,7 @@ const file_tree = @import("file_tree.zig");
 /// Call this once during app initialization.
 pub fn attach(window: *gtk.ApplicationWindow) void {
     const controller = gtk.EventControllerKey.new();
+    controller.as(gtk.EventController).setPropagationPhase(.capture);
     window.as(gtk.Widget).addController(controller.as(gtk.EventController));
 
     _ = gtk.EventControllerKey.signals.key_pressed.connect(
@@ -52,32 +53,43 @@ fn handleKeyPress(
     modifiers: gdk.ModifierType,
     _: *gtk.EventControllerKey,
 ) callconv(.c) c_int {
+    const key = gdk.keyvalToLower(keyval);
+
     // Ctrl+S: Save current file
-    if (modifiers.control_mask and keyval == 's') {
+    if (modifiers.control_mask and ctrlKeyMatches(key, keyval, 's')) {
         editor.saveCurrentFile();
         return 1;
     }
 
     // Ctrl+E: Toggle file tree visibility
-    if (modifiers.control_mask and keyval == 'e') {
+    if (modifiers.control_mask and ctrlKeyMatches(key, keyval, 'e')) {
         toggleFileTree();
         return 1;
     }
 
     // Ctrl+=: Increase font size (= is same key as +)
-    if (modifiers.control_mask and (keyval == '=' or keyval == '+' or keyval == 0xffab)) {
+    if (modifiers.control_mask and (key == '=' or key == '+' or keyval == 0xffab)) {
         changeFontSize(1);
         return 1;
     }
 
     // Ctrl+-: Decrease font size
-    if (modifiers.control_mask and (keyval == '-' or keyval == 0xffad)) {
+    if (modifiers.control_mask and (key == '-' or keyval == 0xffad)) {
         changeFontSize(-1);
         return 1;
     }
 
     // Key not handled, let GTK process it
     return 0;
+}
+
+fn ctrlKeyMatches(key_lower: c_uint, raw_keyval: c_uint, ascii_lower: u8) bool {
+    if (key_lower == ascii_lower) return true;
+    const uni = gdk.keyvalToUnicode(raw_keyval);
+    if (uni >= 1 and uni <= 26) {
+        return @as(u8, @intCast(uni - 1 + 'a')) == ascii_lower;
+    }
+    return false;
 }
 
 // ============================================================================

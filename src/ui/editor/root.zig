@@ -12,6 +12,7 @@ const static = @import("static.zig");
 const vim = @import("../vim/root.zig");
 const config = @import("../../utils/config.zig");
 const color_utils = @import("../../utils/color.zig");
+const syntax = @import("../../core/syntax/root.zig");
 
 const current_line_alpha: f64 = 0.35;
 const pango_scale: c_int = 1024;
@@ -77,6 +78,7 @@ pub fn create(cfg: *const config.Config) EditorResult {
     );
 
     applyEditorConfig(code_view, line_gutter, cfg);
+    syntax.init(code_view, cfg);
 
     gutter.setWidthForView(code_view, line_gutter, cfg);
     gutter.queueRedrawSoon();
@@ -141,6 +143,8 @@ pub fn loadFile(path: []const u8) void {
 
     const buffer = state.code_view.getBuffer();
 
+    syntax.setLanguageFromPath(path);
+
     // GTK expects a null-terminated string.
     const content_z = state.allocator.allocSentinel(u8, content.len, 0) catch {
         state.setStatus("Error: Out of memory");
@@ -185,6 +189,8 @@ pub fn loadFile(path: []const u8) void {
         .{ std.fs.path.basename(path), content.len },
     ) catch "File loaded";
     state.setStatus(status);
+
+    syntax.scheduleHighlight();
 }
 
 /// Get current buffer content.
@@ -216,6 +222,7 @@ pub fn clear() void {
 pub fn applyConfig(cfg: *const config.Config) void {
     const state = app.state orelse return;
     applyEditorConfig(state.code_view, state.gutter, cfg);
+    syntax.applyTheme(cfg);
     state.line_highlight.as(gtk.Widget).setVisible(@intFromBool(cfg.editor.highlight_current_line));
     // Redraw line highlight to pick up new theme color
     if (cfg.editor.highlight_current_line) {
@@ -273,6 +280,7 @@ fn onBufferChanged(_: *gtk.TextBuffer, _: *gtk.TextBuffer) callconv(.c) void {
         state.modified = true;
         updateWindowTitle();
     }
+    syntax.scheduleHighlight();
 }
 
 /// Handle special keys in editor (Tab, Enter, Backspace, Vim).
