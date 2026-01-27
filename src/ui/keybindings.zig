@@ -54,42 +54,33 @@ fn handleKeyPress(
     _: *gtk.EventControllerKey,
 ) callconv(.c) c_int {
     const key = gdk.keyvalToLower(keyval);
-    const uni = gdk.keyvalToUnicode(keyval);
-    std.debug.print(
-        "key-press: keyval=0x{x} key_lower=0x{x} unicode=0x{x} ctrl={}\n",
-        .{ keyval, key, uni, modifiers.control_mask },
-    );
+    _ = gdk.keyvalToUnicode(keyval);
 
     // Ctrl+S: Save current file
     if (modifiers.control_mask and ctrlKeyMatches(key, keyval, 's')) {
-        std.debug.print("ctrl+S handled\n", .{});
         editor.saveCurrentFile();
         return 1;
     }
 
     // Ctrl+E: Toggle file tree visibility
     if (modifiers.control_mask and ctrlKeyMatches(key, keyval, 'e')) {
-        std.debug.print("ctrl+E handled\n", .{});
         toggleFileTree();
         return 1;
     }
 
     // Ctrl+=: Increase font size (= is same key as +)
     if (modifiers.control_mask and (key == '=' or key == '+' or keyval == 0xffab)) {
-        std.debug.print("ctrl+= handled\n", .{});
         changeFontSize(1);
         return 1;
     }
 
     // Ctrl+-: Decrease font size
     if (modifiers.control_mask and (key == '-' or keyval == 0xffad)) {
-        std.debug.print("ctrl+- handled\n", .{});
         changeFontSize(-1);
         return 1;
     }
 
     // Key not handled, let GTK process it
-    std.debug.print("key-press: not handled\n", .{});
     return 0;
 }
 
@@ -136,7 +127,6 @@ fn toggleFileTree() void {
 
     const current = paned.getStartChild();
     if (current != null) {
-        std.debug.print("file-tree: hide (pos={d})\n", .{paned.getPosition()});
         // Hide: save position, remove child, focus editor
         state.file_tree_position = paned.getPosition();
         paned.setStartChild(null);
@@ -144,7 +134,6 @@ fn toggleFileTree() void {
         return;
     }
 
-    std.debug.print("file-tree: show (restore_pos={d})\n", .{state.file_tree_position});
     // Show: restore child and position, focus file tree
     paned.setStartChild(state.file_tree_scroll.as(gtk.Widget));
     if (state.file_tree_position <= 0) {

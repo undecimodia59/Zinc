@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Zinc
+Comment=Lightweight Zig + GTK4 IDE
+Exec=zinc %F
+Icon=zinc
+Terminal=false
+Categories=Development;IDE;TextEditor;
+StartupNotify=true

@@ -52,6 +52,39 @@ Or run the binary directly:
 ./zig-out/bin/zinc
 ```
 
+## Install
+
+The easiest way is to use the provided install script:
+
+```bash
+./install.sh
+```
+
+If needed:
+```bash
+chmod +x install.sh
+```
+
+By default this installs to `~/.local`:
+
+- Binary: `~/.local/bin/zinc`
+- Desktop entry: `~/.local/share/applications/zinc.desktop`
+- Icon: `~/.local/share/icons/hicolor/256x256/apps/zinc.png`
+
+You can customize the prefix:
+
+```bash
+ZINC_PREFIX="$HOME/.local" ./install.sh
+```
+
+Make sure `~/.local/bin` (or your chosen prefix bin dir) is on your `PATH` to run `zinc` from the shell.
+
+Alternatively, you can use Zig’s install step:
+
+```bash
+zig build install --prefix "$HOME/.local"
+```
+
 ## Usage
 
 ### Opening Files
