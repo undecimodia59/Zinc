@@ -114,7 +114,7 @@ pub fn extendSelection(view: *gtk.TextView, buffer: *gtk.TextBuffer, motion: Mot
         return;
     };
 
-    // Get current cursor position and move it
+    // Get current cursor position (insert mark) and move it
     var cursor: gtk.TextIter = undefined;
     buffer.getIterAtMark(&cursor, buffer.getInsert());
     applyMotion(&cursor, motion, count);
@@ -134,8 +134,9 @@ pub fn extendSelection(view: *gtk.TextView, buffer: *gtk.TextBuffer, motion: Mot
         }
     }
 
-    // Select from anchor to cursor (order matters for cursor position)
-    buffer.selectRange(&anchor, &cursor);
+    // selectRange(a, b) puts INSERT at a, SELECTION_BOUND at b
+    // We want INSERT at cursor (moving end) so cursor follows motion
+    buffer.selectRange(&cursor, &anchor);
 }
 
 /// Jump to matching bracket/quote (%)
@@ -319,4 +320,90 @@ pub fn moveToWordEnd(buffer: *gtk.TextBuffer, count: u32) void {
     }
 
     buffer.placeCursor(&iter);
+}
+
+/// Extend visual selection to character (f/F/t/T in visual mode)
+pub fn extendSelectionFindChar(buffer: *gtk.TextBuffer, char: u32, count: u32, forward: bool, before: bool) bool {
+    var anchor = root.state.visual_start orelse return false;
+
+    var cursor: gtk.TextIter = undefined;
+    buffer.getIterAtMark(&cursor, buffer.getInsert());
+
+    const start_line = cursor.getLine();
+    var found: u32 = 0;
+
+    if (forward) {
+        while (cursor.forwardChar() != 0 and cursor.getLine() == start_line) {
+            if (cursor.getChar() == char) {
+                found += 1;
+                if (found >= count) {
+                    if (before) {
+                        _ = cursor.backwardChar();
+                    }
+                    buffer.selectRange(&cursor, &anchor);
+                    return true;
+                }
+            }
+        }
+    } else {
+        while (cursor.backwardChar() != 0 and cursor.getLine() == start_line) {
+            if (cursor.getChar() == char) {
+                found += 1;
+                if (found >= count) {
+                    if (before) {
+                        _ = cursor.forwardChar();
+                    }
+                    buffer.selectRange(&cursor, &anchor);
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+/// Extend visual selection to matching bracket (% in visual mode)
+pub fn extendSelectionMatchBracket(buffer: *gtk.TextBuffer) bool {
+    var anchor = root.state.visual_start orelse return false;
+
+    var cursor: gtk.TextIter = undefined;
+    buffer.getIterAtMark(&cursor, buffer.getInsert());
+
+    const char = cursor.getChar();
+
+    // Find which pair this character belongs to
+    for (pairs) |pair| {
+        if (char == pair[0]) {
+            // Opening bracket - search forward
+            if (findMatchingForward(&cursor, pair[0], pair[1])) {
+                buffer.selectRange(&cursor, &anchor);
+                return true;
+            }
+            return false;
+        } else if (char == pair[1]) {
+            // Closing bracket - search backward
+            if (findMatchingBackward(&cursor, pair[0], pair[1])) {
+                buffer.selectRange(&cursor, &anchor);
+                return true;
+            }
+            return false;
+        }
+    }
+
+    // Not on a bracket - search forward on line for one
+    const line_end = cursor.getLine();
+    while (cursor.getLine() == line_end) {
+        const c = cursor.getChar();
+        for (pairs) |pair| {
+            if (c == pair[0] or c == pair[1]) {
+                // Found a bracket, place cursor here first then recurse
+                buffer.placeCursor(&cursor);
+                root.state.visual_start = anchor; // Preserve anchor
+                return extendSelectionMatchBracket(buffer);
+            }
+        }
+        if (cursor.forwardChar() == 0) break;
+    }
+
+    return false;
 }

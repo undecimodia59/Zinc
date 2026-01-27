@@ -37,6 +37,8 @@ pub fn handleKey(view: *gtk.TextView, keyval: c_uint) bool {
             } else {
                 _ = findPrev(buffer);
             }
+            // Scroll to search result
+            root.scrollToCursor(view, 0.5);
         }
         root.enterNormalMode(view);
         return true;

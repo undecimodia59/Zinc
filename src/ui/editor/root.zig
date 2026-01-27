@@ -170,6 +170,14 @@ pub fn loadFile(path: []const u8) void {
         gutter.queueRedrawSoon();
     }
 
+    // Grab focus to the editor
+    _ = state.code_view.as(gtk.Widget).grabFocus();
+
+    // Re-initialize vim mode if enabled to ensure proper state
+    if (vim_mode_enabled) {
+        vim.init(state.code_view);
+    }
+
     var status_buf: [512:0]u8 = undefined;
     const status = std.fmt.bufPrintZ(
         &status_buf,
@@ -280,11 +288,15 @@ fn onEditorKeyPress(
 
     // Vim mode handling
     if (vim_mode_enabled) {
+        // Let Ctrl/Alt modified keys pass through to global keybindings (Ctrl+S, Ctrl+E, etc.)
+        const has_ctrl_or_alt = modifiers.control_mask or modifiers.alt_mask;
+
         if (vim.handleKey(view, keyval, modifiers)) {
             return 1;
         }
         // In insert mode, fall through to normal editing
-        if (vim.state.mode != .insert) {
+        // In normal/visual mode, block unhandled keys EXCEPT Ctrl/Alt shortcuts
+        if (vim.state.mode != .insert and !has_ctrl_or_alt) {
             return 1; // Block other keys in normal/visual mode
         }
     }

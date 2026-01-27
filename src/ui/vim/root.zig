@@ -184,9 +184,34 @@ pub fn handleKey(
     return switch (state.mode) {
         .normal => handleNormalMode(view, buffer, keyval, modifiers),
         .insert => false, // Let GTK handle insert mode
-        .visual, .visual_line => handleVisualMode(view, buffer, keyval, modifiers),
+        .visual, .visual_line => handleVisualMode(view, buffer, keyval),
         .command => command.handleKey(view, keyval),
         .search => search.handleKey(view, keyval),
+    };
+}
+
+fn isModifierKey(keyval: c_uint) bool {
+    return switch (keyval) {
+        gdk.KEY_Shift_L,
+        gdk.KEY_Shift_R,
+        gdk.KEY_Control_L,
+        gdk.KEY_Control_R,
+        gdk.KEY_Alt_L,
+        gdk.KEY_Alt_R,
+        gdk.KEY_Meta_L,
+        gdk.KEY_Meta_R,
+        gdk.KEY_Super_L,
+        gdk.KEY_Super_R,
+        gdk.KEY_Hyper_L,
+        gdk.KEY_Hyper_R,
+        gdk.KEY_ISO_Level3_Shift, // AltGr
+        gdk.KEY_ISO_Level5_Shift,
+        gdk.KEY_Mode_switch,
+        gdk.KEY_Num_Lock,
+        gdk.KEY_Caps_Lock,
+        gdk.KEY_Scroll_Lock,
+        => true,
+        else => false,
     };
 }
 
@@ -267,14 +292,18 @@ fn handleNormalMode(
     keyval: c_uint,
     modifiers: gdk.ModifierType,
 ) bool {
-    _ = modifiers;
-
-    // Handle pending f/F/t/T command (waiting for character)
+    // Handle pending f/F/t/T command (waiting for character) BEFORE modifier check
+    // because AltGr (Ctrl+Alt) is needed for characters like { } [ ] on some keyboards
     if (state.pending_find != .none) {
+        if (isModifierKey(keyval)) {
+            return true;
+        }
         const find_type = state.pending_find;
         state.pending_find = .none;
 
-        if (keyval >= 0x20 and keyval <= 0x7e) {
+        // Accept any printable character (keysyms < 0xff00 are regular characters,
+        // >= 0xff00 are function keys, modifiers, etc.)
+        if (keyval >= 0x20 and keyval < 0xff00) {
             const char: u32 = keyval;
             state.last_find_char = char;
             state.last_find_type = find_type;
@@ -287,10 +316,16 @@ fn handleNormalMode(
                 .none => false,
             };
             _ = found;
+            scrollToCursor(view, 0.5);
             state.reset();
             return true;
         }
         state.reset();
+        return false;
+    }
+
+    // Let Ctrl/Alt modified keys pass through to global keybindings (Ctrl+S, Ctrl+E, etc.)
+    if (modifiers.control_mask or modifiers.alt_mask) {
         return false;
     }
 
@@ -321,21 +356,25 @@ fn handleNormalMode(
     switch (keyval) {
         'h', gdk.KEY_Left => {
             motions.move(buffer, .left, state.getCount());
+            scrollToCursor(view, 0.5);
             state.reset();
             return true;
         },
         'j', gdk.KEY_Down => {
             motions.move(buffer, .down, state.getCount());
+            scrollToCursor(view, 0.5);
             state.reset();
             return true;
         },
         'k', gdk.KEY_Up => {
             motions.move(buffer, .up, state.getCount());
+            scrollToCursor(view, 0.5);
             state.reset();
             return true;
         },
         'l', gdk.KEY_Right => {
             motions.move(buffer, .right, state.getCount());
+            scrollToCursor(view, 0.5);
             state.reset();
             return true;
         },
@@ -345,6 +384,7 @@ fn handleNormalMode(
             } else {
                 motions.move(buffer, .word_forward, state.getCount());
             }
+            scrollToCursor(view, 0.5);
             state.reset();
             return true;
         },
@@ -354,16 +394,19 @@ fn handleNormalMode(
             } else {
                 motions.move(buffer, .word_backward, state.getCount());
             }
+            scrollToCursor(view, 0.5);
             state.reset();
             return true;
         },
         '0' => {
             motions.move(buffer, .line_start, 1);
+            scrollToCursor(view, 0.5);
             state.reset();
             return true;
         },
         '$' => {
             motions.move(buffer, .line_end, 1);
+            scrollToCursor(view, 0.5);
             state.reset();
             return true;
         },
@@ -486,6 +529,7 @@ fn handleNormalMode(
             } else {
                 _ = search.findPrev(buffer);
             }
+            scrollToCursor(view, 0.5);
             state.reset();
             return true;
         },
@@ -495,16 +539,19 @@ fn handleNormalMode(
             } else {
                 _ = search.findNext(buffer);
             }
+            scrollToCursor(view, 0.5);
             state.reset();
             return true;
         },
         '*' => {
             _ = search.searchWordUnderCursor(buffer, true);
+            scrollToCursor(view, 0.5);
             state.reset();
             return true;
         },
         '#' => {
             _ = search.searchWordUnderCursor(buffer, false);
+            scrollToCursor(view, 0.5);
             state.reset();
             return true;
         },
@@ -512,6 +559,7 @@ fn handleNormalMode(
         // Bracket matching
         '%' => {
             _ = motions.matchBracket(buffer);
+            scrollToCursor(view, 0.5);
             state.reset();
             return true;
         },
@@ -543,6 +591,7 @@ fn handleNormalMode(
                     .T => motions.findCharBackward(buffer, state.last_find_char, state.getCount(), true),
                     .none => false,
                 };
+                scrollToCursor(view, 0.5);
             }
             state.reset();
             return true;
@@ -557,6 +606,7 @@ fn handleNormalMode(
                     .T => motions.findCharForward(buffer, state.last_find_char, state.getCount(), true),
                     .none => false,
                 };
+                scrollToCursor(view, 0.5);
             }
             state.reset();
             return true;
@@ -565,11 +615,13 @@ fn handleNormalMode(
         // Additional motions
         '^' => {
             motions.moveToFirstNonBlank(buffer);
+            scrollToCursor(view, 0.5);
             state.reset();
             return true;
         },
         'e' => {
             motions.moveToWordEnd(buffer, state.getCount());
+            scrollToCursor(view, 0.5);
             state.reset();
             return true;
         },
@@ -585,9 +637,38 @@ fn handleVisualMode(
     view: *gtk.TextView,
     buffer: *gtk.TextBuffer,
     keyval: c_uint,
-    modifiers: gdk.ModifierType,
 ) bool {
-    _ = modifiers;
+    // Handle pending f/F/t/T command (waiting for character) BEFORE modifier check
+    // because AltGr (Ctrl+Alt) is needed for characters like { } [ ] on some keyboards
+    if (state.pending_find != .none) {
+        if (isModifierKey(keyval)) {
+            return true;
+        }
+        const find_type = state.pending_find;
+        state.pending_find = .none;
+
+        // Accept any printable character (keysyms < 0xff00 are regular characters,
+        // >= 0xff00 are function keys, modifiers, etc.)
+        if (keyval >= 0x20 and keyval < 0xff00) {
+            const char: u32 = keyval;
+            state.last_find_char = char;
+            state.last_find_type = find_type;
+
+            const found = switch (find_type) {
+                .f => motions.extendSelectionFindChar(buffer, char, state.getCount(), true, false),
+                .t => motions.extendSelectionFindChar(buffer, char, state.getCount(), true, true),
+                .F => motions.extendSelectionFindChar(buffer, char, state.getCount(), false, false),
+                .T => motions.extendSelectionFindChar(buffer, char, state.getCount(), false, true),
+                .none => false,
+            };
+            _ = found;
+            scrollToCursor(view, 0.5);
+            state.reset();
+            return true;
+        }
+        state.reset();
+        return false;
+    }
 
     // Handle pending g command
     if (state.pending_g) {
@@ -606,41 +687,49 @@ fn handleVisualMode(
         // Movement extends selection
         'h', gdk.KEY_Left => {
             motions.extendSelection(view, buffer, .left, state.getCount());
+            scrollToCursor(view, 0.5);
             state.reset();
             return true;
         },
         'j', gdk.KEY_Down => {
             motions.extendSelection(view, buffer, .down, state.getCount());
+            scrollToCursor(view, 0.5);
             state.reset();
             return true;
         },
         'k', gdk.KEY_Up => {
             motions.extendSelection(view, buffer, .up, state.getCount());
+            scrollToCursor(view, 0.5);
             state.reset();
             return true;
         },
         'l', gdk.KEY_Right => {
             motions.extendSelection(view, buffer, .right, state.getCount());
+            scrollToCursor(view, 0.5);
             state.reset();
             return true;
         },
         'w' => {
             motions.extendSelection(view, buffer, .word_forward, state.getCount());
+            scrollToCursor(view, 0.5);
             state.reset();
             return true;
         },
         'b' => {
             motions.extendSelection(view, buffer, .word_backward, state.getCount());
+            scrollToCursor(view, 0.5);
             state.reset();
             return true;
         },
         '0' => {
             motions.extendSelection(view, buffer, .line_start, 1);
+            scrollToCursor(view, 0.5);
             state.reset();
             return true;
         },
         '$' => {
             motions.extendSelection(view, buffer, .line_end, 1);
+            scrollToCursor(view, 0.5);
             state.reset();
             return true;
         },
@@ -652,6 +741,62 @@ fn handleVisualMode(
         },
         'g' => {
             state.pending_g = true;
+            return true;
+        },
+
+        // Character find
+        'f' => {
+            state.pending_find = .f;
+            return true;
+        },
+        'F' => {
+            state.pending_find = .F;
+            return true;
+        },
+        't' => {
+            state.pending_find = .t;
+            return true;
+        },
+        'T' => {
+            state.pending_find = .T;
+            return true;
+        },
+        ';' => {
+            // Repeat last f/F/t/T
+            if (state.last_find_type != .none and state.last_find_char != 0) {
+                _ = switch (state.last_find_type) {
+                    .f => motions.extendSelectionFindChar(buffer, state.last_find_char, state.getCount(), true, false),
+                    .t => motions.extendSelectionFindChar(buffer, state.last_find_char, state.getCount(), true, true),
+                    .F => motions.extendSelectionFindChar(buffer, state.last_find_char, state.getCount(), false, false),
+                    .T => motions.extendSelectionFindChar(buffer, state.last_find_char, state.getCount(), false, true),
+                    .none => false,
+                };
+                scrollToCursor(view, 0.5);
+            }
+            state.reset();
+            return true;
+        },
+        ',' => {
+            // Repeat last f/F/t/T in opposite direction
+            if (state.last_find_type != .none and state.last_find_char != 0) {
+                _ = switch (state.last_find_type) {
+                    .f => motions.extendSelectionFindChar(buffer, state.last_find_char, state.getCount(), false, false),
+                    .t => motions.extendSelectionFindChar(buffer, state.last_find_char, state.getCount(), false, true),
+                    .F => motions.extendSelectionFindChar(buffer, state.last_find_char, state.getCount(), true, false),
+                    .T => motions.extendSelectionFindChar(buffer, state.last_find_char, state.getCount(), true, true),
+                    .none => false,
+                };
+                scrollToCursor(view, 0.5);
+            }
+            state.reset();
+            return true;
+        },
+
+        // Bracket matching
+        '%' => {
+            _ = motions.extendSelectionMatchBracket(buffer);
+            scrollToCursor(view, 0.5);
+            state.reset();
             return true;
         },
 
@@ -694,6 +839,13 @@ pub fn enterNormalMode(view: *gtk.TextView) void {
     state.reset();
     state.visual_start = null;
     view.setEditable(0);
+
+    // Clear any selection by placing cursor at current insert position
+    const buffer = view.getBuffer();
+    var iter: gtk.TextIter = undefined;
+    buffer.getIterAtMark(&iter, buffer.getInsert());
+    buffer.placeCursor(&iter);
+
     updateCursor(view);
     updateStatusBar();
 }
@@ -727,7 +879,26 @@ fn enterVisualMode(view: *gtk.TextView, buffer: *gtk.TextBuffer, line_mode: bool
 }
 
 fn updateCursor(view: *gtk.TextView) void {
+    // Ensure cursor is visible immediately
     view.setCursorVisible(1);
+
+    // Also schedule a deferred visibility update to handle GTK timing issues
+    // when switching between editable/non-editable states
+    const glib = @import("glib");
+    _ = glib.idleAddFull(
+        glib.PRIORITY_HIGH_IDLE,
+        struct {
+            fn cb(data: ?*anyopaque) callconv(.c) c_int {
+                const v: *gtk.TextView = @ptrCast(@alignCast(data orelse return 0));
+                v.setCursorVisible(1);
+                // Force a redraw to ensure cursor is rendered
+                v.as(gtk.Widget).queueDraw();
+                return 0; // Remove source (run once)
+            }
+        }.cb,
+        view,
+        null,
+    );
 }
 
 pub fn updateStatusBar() void {
