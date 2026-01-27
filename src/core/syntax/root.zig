@@ -10,6 +10,7 @@ const glib = @import("glib");
 const config = @import("../../utils/config.zig");
 const types = @import("types.zig");
 const zig_lang = @import("languages/zig.zig");
+const panther_lang = @import("languages/panther.zig");
 
 const Token = types.Token;
 const TokenType = types.TokenType;
@@ -39,6 +40,7 @@ const tag_defs = [_]TagDef{
 // Add new languages by defining a tokenizer in languages/ and registering here.
 const languages = [_]Language{
     zig_lang.language,
+    panther_lang.language,
 };
 
 const State = struct {
