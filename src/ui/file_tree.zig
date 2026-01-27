@@ -267,7 +267,7 @@ fn populateTree(path: []const u8, parent: ?*gtk.TreeIter, depth: u32) void {
         value.unset();
 
         // Recursively add subdirectories (limited depth)
-        if (entry.kind == .directory and depth < 2) {
+        if (entry.kind == .directory and depth < 10) {
             var subpath_buf: [std.fs.max_path_bytes]u8 = undefined;
             const subpath = std.fmt.bufPrint(&subpath_buf, "{s}/{s}", .{ path, entry.name }) catch continue;
             populateTree(subpath, &tree_iter, depth + 1);

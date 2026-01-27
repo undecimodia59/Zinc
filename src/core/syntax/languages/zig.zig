@@ -12,13 +12,23 @@ pub const language = types.Language{
     .tokenize = tokenize,
 };
 
+const Container = enum {
+    none,
+    @"struct",
+    @"enum",
+};
+
 const keywords = [_][]const u8{
     "align", "allowzero", "and", "anyframe", "anytype", "asm", "async", "await",
     "break", "catch", "comptime", "const", "continue", "defer", "else", "enum",
-    "errdefer", "error", "export", "extern", "for", "if", "inline", "linksection",
+    "errdefer", "error", "export", "extern", "fn", "for", "if", "inline", "linksection",
     "noalias", "noinline", "nosuspend", "opaque", "or", "orelse", "packed",
     "pub", "resume", "return", "struct", "suspend", "switch", "test", "threadlocal",
     "try", "union", "unreachable", "usingnamespace", "var", "volatile", "while",
+};
+
+const special_keywords = [_][]const u8{
+    "null", "true", "false", "undefined", "unreachable", "!", "?"
 };
 
 const builtin_types = [_][]const u8{
@@ -33,6 +43,13 @@ const builtin_types = [_][]const u8{
 
 fn isKeyword(word: []const u8) bool {
     for (keywords) |kw| {
+        if (std.mem.eql(u8, word, kw)) return true;
+    }
+    return false;
+}
+
+fn isSpecial(word: []const u8) bool {
+    for (special_keywords) |kw| {
         if (std.mem.eql(u8, word, kw)) return true;
     }
     return false;
@@ -66,6 +83,27 @@ fn addToken(allocator: std.mem.Allocator, list: *std.ArrayList(Token), kind: Tok
     try list.append(allocator, .{ .start_line = s_line, .start_col = s_col, .end_line = e_line, .end_col = e_col, .kind = kind });
 }
 
+fn peekNonWhitespace(source: []const u8, start: usize) ?u8 {
+    var idx = start;
+    while (idx < source.len) : (idx += 1) {
+        const c = source[idx];
+        if (!std.ascii.isWhitespace(c)) return c;
+    }
+    return null;
+}
+
+fn peekPrevNonWhitespace(source: []const u8, start: usize) ?u8 {
+    if (start == 0) return null;
+    var idx: usize = start - 1;
+    while (true) {
+        const c = source[idx];
+        if (!std.ascii.isWhitespace(c)) return c;
+        if (idx == 0) break;
+        idx -= 1;
+    }
+    return null;
+}
+
 pub fn tokenize(allocator: std.mem.Allocator, source: []const u8) ![]Token {
     var tokens = std.ArrayList(Token).empty;
     errdefer tokens.deinit(allocator);
@@ -75,9 +113,26 @@ pub fn tokenize(allocator: std.mem.Allocator, source: []const u8) ![]Token {
     var col: u32 = 0; // byte offset in line
 
     var expect_fn_name = false;
+    var expect_var_decl = false;
+    var fn_sig = false;
+    var fn_paren_depth: u32 = 0;
+    var param_expect_name = false;
+    var param_type_context = false;
+    var return_type_context = false;
+
+    var pending_container: ?Container = null;
+    var container_stack: [64]Container = undefined;
+    var container_depth: usize = 0;
+
+    var struct_type_context = false;
+    var struct_value_context = false;
 
     while (i < source.len) {
         const c = source[i];
+
+        if (pending_container != null and !std.ascii.isWhitespace(c) and c != '/' and c != '{') {
+            pending_container = null;
+        }
 
         if (c == '\n') {
             line += 1;
@@ -163,8 +218,20 @@ pub fn tokenize(allocator: std.mem.Allocator, source: []const u8) ![]Token {
                 i += 1;
                 col += 1;
             }
-            try addToken(allocator, &tokens, .string, s_line, s_col, line, col);
+            const kind: TokenType = if (struct_value_context) .field_value else .string;
+            try addToken(allocator, &tokens, kind, s_line, s_col, line, col);
             expect_fn_name = false;
+            expect_var_decl = false;
+            continue;
+        }
+
+        // Optional/error union markers
+        if (c == '?' or c == '!') {
+            const s_line = line;
+            const s_col = col;
+            i += 1;
+            col += 1;
+            try addToken(allocator, &tokens, .special, s_line, s_col, line, col);
             continue;
         }
 
@@ -178,7 +245,8 @@ pub fn tokenize(allocator: std.mem.Allocator, source: []const u8) ![]Token {
                 i += 1;
                 col += 1;
             }
-            try addToken(allocator, &tokens, .function, s_line, s_col, line, col);
+            const kind: TokenType = if (struct_value_context) .field_value else .function;
+            try addToken(allocator, &tokens, kind, s_line, s_col, line, col);
             expect_fn_name = false;
             continue;
         }
@@ -203,8 +271,10 @@ pub fn tokenize(allocator: std.mem.Allocator, source: []const u8) ![]Token {
                         }
                         break;
                     }
-                    try addToken(allocator, &tokens, .number, s_line, s_col, line, col);
+                    const kind: TokenType = if (struct_value_context) .field_value else .number;
+                    try addToken(allocator, &tokens, kind, s_line, s_col, line, col);
                     expect_fn_name = false;
+                    expect_var_decl = false;
                     continue;
                 }
             }
@@ -217,8 +287,10 @@ pub fn tokenize(allocator: std.mem.Allocator, source: []const u8) ![]Token {
                 }
                 break;
             }
-            try addToken(allocator, &tokens, .number, s_line, s_col, line, col);
+            const kind: TokenType = if (struct_value_context) .field_value else .number;
+            try addToken(allocator, &tokens, kind, s_line, s_col, line, col);
             expect_fn_name = false;
+            expect_var_decl = false;
             continue;
         }
 
@@ -236,15 +308,59 @@ pub fn tokenize(allocator: std.mem.Allocator, source: []const u8) ![]Token {
             const word = source[start..i];
             if (isKeyword(word)) {
                 try addToken(allocator, &tokens, .keyword, s_line, s_col, line, col);
-                expect_fn_name = std.mem.eql(u8, word, "fn");
-            } else if (isBuiltinType(word)) {
-                try addToken(allocator, &tokens, .@"type", s_line, s_col, line, col);
+                if (std.mem.eql(u8, word, "fn")) {
+                    expect_fn_name = true;
+                    fn_sig = true;
+                    fn_paren_depth = 0;
+                    param_expect_name = false;
+                    param_type_context = false;
+                } else if (std.mem.eql(u8, word, "const") or std.mem.eql(u8, word, "var")) {
+                    expect_var_decl = true;
+                } else if (std.mem.eql(u8, word, "struct")) {
+                    pending_container = .@"struct";
+                } else if (std.mem.eql(u8, word, "enum")) {
+                    pending_container = .@"enum";
+                }
+            } else if (isSpecial(word)) {
+                const kind: TokenType = if (struct_value_context) .field_value else .special;
+                try addToken(allocator, &tokens, kind, s_line, s_col, line, col);
                 expect_fn_name = false;
             } else if (expect_fn_name) {
                 try addToken(allocator, &tokens, .function, s_line, s_col, line, col);
                 expect_fn_name = false;
+            } else if (param_expect_name or (fn_sig and fn_paren_depth > 0 and !param_type_context and (peekPrevNonWhitespace(source, start) == '(' or peekPrevNonWhitespace(source, start) == ','))) {
+                try addToken(allocator, &tokens, .param, s_line, s_col, line, col);
+                param_expect_name = false;
+            } else if (param_type_context or struct_type_context or return_type_context) {
+                if (isBuiltinType(word)) {
+                    try addToken(allocator, &tokens, .@"type", s_line, s_col, line, col);
+                } else {
+                    try addToken(allocator, &tokens, .@"type", s_line, s_col, line, col);
+                }
+            } else if (struct_value_context) {
+                try addToken(allocator, &tokens, .field_value, s_line, s_col, line, col);
+            } else if (expect_var_decl) {
+                try addToken(allocator, &tokens, .variable_decl, s_line, s_col, line, col);
+                expect_var_decl = false;
             } else {
-                try addToken(allocator, &tokens, .variable, s_line, s_col, line, col);
+                var kind: TokenType = .variable;
+                const container = if (container_depth > 0) container_stack[container_depth - 1] else .none;
+                if (container == .@"struct") {
+                    if (peekNonWhitespace(source, i) == ':') {
+                        kind = .field;
+                    }
+                } else if (container == .@"enum") {
+                    if (peekNonWhitespace(source, i)) |next_c| {
+                        if (next_c == ',' or next_c == '}' or next_c == '=') {
+                            kind = .enum_field;
+                        }
+                    }
+                } else {
+                    if (peekNonWhitespace(source, i) == '(') {
+                        kind = .function;
+                    }
+                }
+                try addToken(allocator, &tokens, kind, s_line, s_col, line, col);
                 expect_fn_name = false;
             }
             continue;
@@ -267,14 +383,77 @@ pub fn tokenize(allocator: std.mem.Allocator, source: []const u8) ![]Token {
                 col += @intCast(clen);
             }
 
-            try addToken(allocator, &tokens, .variable, s_line, s_col, line, col);
+            const kind: TokenType = if (struct_value_context) .field_value else .variable;
+            try addToken(allocator, &tokens, kind, s_line, s_col, line, col);
             expect_fn_name = false;
+            expect_var_decl = false;
             continue;
         }
 
         // Whitespace or punctuation
         if (!std.ascii.isWhitespace(c) and expect_fn_name) {
             expect_fn_name = false;
+        }
+
+        if (c == '(' and fn_sig) {
+            fn_paren_depth += 1;
+            param_expect_name = true;
+        } else if (c == ')' and fn_sig and fn_paren_depth > 0) {
+            fn_paren_depth -= 1;
+            param_expect_name = false;
+            param_type_context = false;
+            if (fn_paren_depth == 0) {
+                return_type_context = true;
+            }
+        } else if (c == ',' and fn_sig and fn_paren_depth > 0) {
+            param_expect_name = true;
+            param_type_context = false;
+        } else if (c == ':' and fn_sig and fn_paren_depth > 0) {
+            param_type_context = true;
+            param_expect_name = false;
+        } else if (c == ';' and fn_sig and fn_paren_depth == 0) {
+            fn_sig = false;
+            return_type_context = false;
+        }
+
+        if (c == '{') {
+            if (pending_container) |kind| {
+                if (container_depth < container_stack.len) {
+                    container_stack[container_depth] = kind;
+                    container_depth += 1;
+                }
+                pending_container = null;
+            } else {
+                if (container_depth < container_stack.len) {
+                    container_stack[container_depth] = .none;
+                    container_depth += 1;
+                }
+            }
+            if (fn_sig and fn_paren_depth == 0) {
+                fn_sig = false;
+            }
+            return_type_context = false;
+        } else if (c == '}') {
+            if (container_depth > 0) container_depth -= 1;
+            struct_type_context = false;
+            struct_value_context = false;
+        }
+
+        const current_container = if (container_depth > 0) container_stack[container_depth - 1] else .none;
+        if (current_container == .@"struct") {
+            if (c == ':') {
+                struct_type_context = true;
+                struct_value_context = false;
+            } else if (c == '=') {
+                struct_type_context = false;
+                struct_value_context = true;
+            } else if (c == ',' or c == ';' or c == '\n') {
+                struct_type_context = false;
+                struct_value_context = false;
+            }
+        } else {
+            struct_type_context = false;
+            struct_value_context = false;
         }
 
         i += 1;

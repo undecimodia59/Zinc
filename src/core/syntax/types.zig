@@ -6,11 +6,17 @@ const std = @import("std");
 pub const TokenType = enum {
     comment,
     keyword,
+    special,
     string,
     number,
     @"type",
     function,
     variable,
+    variable_decl,
+    param,
+    field,
+    enum_field,
+    field_value,
 };
 
 /// Highlighted span expressed as line + byte offsets.

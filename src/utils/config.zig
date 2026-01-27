@@ -42,11 +42,17 @@ pub const ThemeConfig = struct {
     line_highlight: u32 = 0x2d2d2d,
     comment: u32 = 0x6a9955,
     keyword: u32 = 0x569cd6,
+    special: u32 = 0xc586c0,
     string: u32 = 0xce9178,
     number: u32 = 0xb5cea8,
     type: u32 = 0x4ec9b0,
     function: u32 = 0xdcdcaa,
-    variable: u32 = 0x9cdcfe,
+    variable: u32 = 0xd4d4d4,
+    variable_decl: u32 = 0x9cdcfe,
+    param: u32 = 0x9cdcfe,
+    field: u32 = 0xdcdcaa,
+    enum_field: u32 = 0xc586c0,
+    field_value: u32 = 0xce9178,
 
     /// Apply a preset theme by name
     pub fn applyPreset(self: *ThemeConfig, allocator: Allocator, name: []const u8) !void {
@@ -61,11 +67,17 @@ pub const ThemeConfig = struct {
                 self.line_highlight = preset.line_highlight;
                 self.comment = preset.comment;
                 self.keyword = preset.keyword;
+                self.special = preset.special;
                 self.string = preset.string;
                 self.number = preset.number;
                 self.type = preset.type;
                 self.function = preset.function;
                 self.variable = preset.variable;
+                self.variable_decl = preset.variable_decl;
+                self.param = preset.param;
+                self.field = preset.field;
+                self.enum_field = preset.enum_field;
+                self.field_value = preset.field_value;
                 return;
             }
         }
@@ -82,11 +94,17 @@ pub const ThemePreset = struct {
     line_highlight: u32,
     comment: u32,
     keyword: u32,
+    special: u32,
     string: u32,
     number: u32,
     type: u32,
     function: u32,
     variable: u32,
+    variable_decl: u32,
+    param: u32,
+    field: u32,
+    enum_field: u32,
+    field_value: u32,
 };
 
 /// Available theme presets
@@ -101,11 +119,17 @@ pub const theme_presets = [_]ThemePreset{
         .line_highlight = 0x2d2d2d,
         .comment = 0x6a9955,
         .keyword = 0x569cd6,
+        .special = 0xc586c0,
         .string = 0xce9178,
         .number = 0xb5cea8,
         .type = 0x4ec9b0,
         .function = 0xdcdcaa,
-        .variable = 0x9cdcfe,
+        .variable = 0xd4d4d4,
+        .variable_decl = 0x9cdcfe,
+        .param = 0x9cdcfe,
+        .field = 0xdcdcaa,
+        .enum_field = 0xc586c0,
+        .field_value = 0xce9178,
     },
     // Light
     .{
@@ -117,11 +141,17 @@ pub const theme_presets = [_]ThemePreset{
         .line_highlight = 0xf0f0f0,
         .comment = 0x008000,
         .keyword = 0x0000ff,
+        .special = 0x7a3e9d,
         .string = 0xa31515,
         .number = 0x098658,
         .type = 0x267f99,
         .function = 0x795e26,
-        .variable = 0x001080,
+        .variable = 0x000000,
+        .variable_decl = 0x001080,
+        .param = 0x001080,
+        .field = 0x795e26,
+        .enum_field = 0x7a3e9d,
+        .field_value = 0xa31515,
     },
     // Dracula
     .{
@@ -133,11 +163,17 @@ pub const theme_presets = [_]ThemePreset{
         .line_highlight = 0x44475a,
         .comment = 0x6272a4,
         .keyword = 0xff79c6,
+        .special = 0xbd93f9,
         .string = 0xf1fa8c,
         .number = 0xbd93f9,
         .type = 0x8be9fd,
         .function = 0x50fa7b,
         .variable = 0xf8f8f2,
+        .variable_decl = 0x8be9fd,
+        .param = 0x8be9fd,
+        .field = 0x50fa7b,
+        .enum_field = 0xff79c6,
+        .field_value = 0xf1fa8c,
     },
     // Gruvbox Dark
     .{
@@ -149,11 +185,17 @@ pub const theme_presets = [_]ThemePreset{
         .line_highlight = 0x3c3836,
         .comment = 0x928374,
         .keyword = 0xfb4934,
+        .special = 0xd3869b,
         .string = 0xb8bb26,
         .number = 0xd3869b,
         .type = 0x83a598,
         .function = 0xfabd2f,
         .variable = 0xebdbb2,
+        .variable_decl = 0x83a598,
+        .param = 0x83a598,
+        .field = 0xfabd2f,
+        .enum_field = 0xd3869b,
+        .field_value = 0xb8bb26,
     },
     // Nord
     .{
@@ -165,11 +207,17 @@ pub const theme_presets = [_]ThemePreset{
         .line_highlight = 0x3b4252,
         .comment = 0x616e88,
         .keyword = 0x81a1c1,
+        .special = 0xb48ead,
         .string = 0xa3be8c,
         .number = 0xb48ead,
         .type = 0x8fbcbb,
         .function = 0x88c0d0,
         .variable = 0xd8dee9,
+        .variable_decl = 0x81a1c1,
+        .param = 0x81a1c1,
+        .field = 0x88c0d0,
+        .enum_field = 0xb48ead,
+        .field_value = 0xa3be8c,
     },
     // One Dark
     .{
@@ -181,11 +229,17 @@ pub const theme_presets = [_]ThemePreset{
         .line_highlight = 0x2c313c,
         .comment = 0x5c6370,
         .keyword = 0xc678dd,
+        .special = 0xd19a66,
         .string = 0x98c379,
         .number = 0xd19a66,
         .type = 0xe5c07b,
         .function = 0x61afef,
-        .variable = 0xe06c75,
+        .variable = 0xabb2bf,
+        .variable_decl = 0xe06c75,
+        .param = 0xe06c75,
+        .field = 0x61afef,
+        .enum_field = 0xc678dd,
+        .field_value = 0x98c379,
     },
 };
 
@@ -388,11 +442,17 @@ const ThemeConfigFile = struct {
     line_highlight: ?[]const u8 = null,
     comment: ?[]const u8 = null,
     keyword: ?[]const u8 = null,
+    special: ?[]const u8 = null,
     string: ?[]const u8 = null,
     number: ?[]const u8 = null,
     type: ?[]const u8 = null,
     function: ?[]const u8 = null,
     variable: ?[]const u8 = null,
+    variable_decl: ?[]const u8 = null,
+    param: ?[]const u8 = null,
+    field: ?[]const u8 = null,
+    enum_field: ?[]const u8 = null,
+    field_value: ?[]const u8 = null,
 };
 
 const UiConfigFile = struct {
@@ -502,6 +562,12 @@ fn applyThemeFields(self: *Config, parsed: ThemeConfigFile) !bool {
             colors_set = true;
         }
     }
+    if (parsed.special) |v| {
+        if (parseHexColor(v)) |c| {
+            self.theme.special = c;
+            colors_set = true;
+        }
+    }
     if (parsed.string) |v| {
         if (parseHexColor(v)) |c| {
             self.theme.string = c;
@@ -529,6 +595,36 @@ fn applyThemeFields(self: *Config, parsed: ThemeConfigFile) !bool {
     if (parsed.variable) |v| {
         if (parseHexColor(v)) |c| {
             self.theme.variable = c;
+            colors_set = true;
+        }
+    }
+    if (parsed.variable_decl) |v| {
+        if (parseHexColor(v)) |c| {
+            self.theme.variable_decl = c;
+            colors_set = true;
+        }
+    }
+    if (parsed.param) |v| {
+        if (parseHexColor(v)) |c| {
+            self.theme.param = c;
+            colors_set = true;
+        }
+    }
+    if (parsed.field) |v| {
+        if (parseHexColor(v)) |c| {
+            self.theme.field = c;
+            colors_set = true;
+        }
+    }
+    if (parsed.enum_field) |v| {
+        if (parseHexColor(v)) |c| {
+            self.theme.enum_field = c;
+            colors_set = true;
+        }
+    }
+    if (parsed.field_value) |v| {
+        if (parseHexColor(v)) |c| {
+            self.theme.field_value = c;
             colors_set = true;
         }
     }
@@ -847,11 +943,17 @@ fn ensureExampleTheme(allocator: Allocator) !void {
         \\  "line_highlight": "#2d2d2d",
         \\  "comment": "#6a9955",
         \\  "keyword": "#569cd6",
+        \\  "special": "#c586c0",
         \\  "string": "#ce9178",
         \\  "number": "#b5cea8",
         \\  "type": "#4ec9b0",
         \\  "function": "#dcdcaa",
-        \\  "variable": "#9cdcfe"
+        \\  "variable": "#d4d4d4",
+        \\  "variable_decl": "#9cdcfe",
+        \\  "param": "#9cdcfe",
+        \\  "field": "#dcdcaa",
+        \\  "enum_field": "#c586c0",
+        \\  "field_value": "#ce9178"
         \\}
         \\
     ;

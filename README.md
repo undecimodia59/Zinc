@@ -285,11 +285,17 @@ Example `~/.config/zinc/themes/mytheme.json`:
   "line_highlight": "#252540",
   "comment": "#6c6c8a",
   "keyword": "#e94560",
+  "special": "#9b59b6",
   "string": "#0f9d58",
   "number": "#f39c12",
   "type": "#3498db",
   "function": "#9b59b6",
-  "variable": "#1abc9c"
+  "variable": "#1abc9c",
+  "variable_decl": "#1f8ef1",
+  "param": "#1f8ef1",
+  "field": "#9b59b6",
+  "enum_field": "#9b59b6",
+  "field_value": "#0f9d58"
 }
 ```
 
@@ -304,11 +310,17 @@ Example `~/.config/zinc/themes/mytheme.json`:
 | `line_highlight` | Current line highlight background |
 | `comment` | Comment text color |
 | `keyword` | Keyword color (if, else, fn, etc.) |
+| `special` | Special literals (null, true, false, etc.) |
 | `string` | String literal color |
 | `number` | Numeric literal color |
 | `type` | Type name color |
 | `function` | Function name color |
 | `variable` | Variable name color |
+| `variable_decl` | Variable/const declaration name color |
+| `param` | Function parameter name color |
+| `field` | Struct field name color |
+| `enum_field` | Enum field name color |
+| `field_value` | Struct field value color |
 
 Colors are specified as hex strings with `#` prefix (e.g., `"#ff5500"`).
 

@@ -81,6 +81,25 @@ pub const AppState = struct {
     }
 };
 
+fn setupAppIcon(window: *gtk.ApplicationWindow) void {
+    const display = gdk.Display.getDefault() orelse return;
+    const icon_theme = gtk.IconTheme.getForDisplay(display);
+
+    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const icons_dir = std.fs.cwd().realpath("resources/icons", &path_buf) catch return;
+
+    const alloc = allocator();
+    const icons_z = alloc.allocSentinel(u8, icons_dir.len, 0) catch return;
+    defer alloc.free(icons_z);
+    @memcpy(icons_z, icons_dir);
+
+    icon_theme.addSearchPath(icons_z.ptr);
+
+    const icon_name: [:0]const u8 = "zinc";
+    gtk.Window.setDefaultIconName(icon_name.ptr);
+    window.as(gtk.Window).setIconName(icon_name.ptr);
+}
+
 /// Called when the GTK application is activated
 pub fn onActivate(app_ptr: *gtk.Application, user_data: *gtk.Application) callconv(.c) void {
     _ = user_data;
@@ -110,6 +129,7 @@ pub fn onActivate(app_ptr: *gtk.Application, user_data: *gtk.Application) callco
         @intCast(app_config.ui.window_width),
         @intCast(app_config.ui.window_height),
     );
+    setupAppIcon(window);
 
     // Attach keyboard shortcuts (Ctrl+S, Ctrl+E, etc.)
     keybindings.attach(window);
@@ -211,6 +231,26 @@ pub fn onActivate(app_ptr: *gtk.Application, user_data: *gtk.Application) callco
 
     // Show window
     window.as(gtk.Widget).setVisible(1);
+
+    // Ensure paned position applies after widgets are realized.
+    {
+        const glib = @import("glib");
+        const width: c_int = @intCast(app_config.ui.file_tree_width);
+        _ = glib.idleAddFull(
+            glib.PRIORITY_DEFAULT_IDLE,
+            struct {
+                fn cb(data: ?*anyopaque) callconv(.c) c_int {
+                    const w: c_int = @intCast(@intFromPtr(data));
+                    const app_state_inner = state orelse return 0;
+                    app_state_inner.paned.setPosition(w);
+                    app_state_inner.file_tree_position = w;
+                    return 0;
+                }
+            }.cb,
+            @ptrFromInt(@as(usize, @intCast(width))),
+            null,
+        );
+    }
 }
 
 const HeaderBarResult = struct {
@@ -375,7 +415,10 @@ fn onCloseRequest(_: *gtk.Window, _: *gtk.Window) callconv(.c) c_int {
     const app_state = state orelse return 0;
     const cfg = app_state.config;
 
-    const pos = app_state.paned.getPosition();
+    const pos = if (app_state.paned.getStartChild() != null)
+        app_state.paned.getPosition()
+    else
+        app_state.file_tree_position;
     if (pos > 0) cfg.ui.file_tree_width = @intCast(pos);
 
     var w: c_int = 0;
