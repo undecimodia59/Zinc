@@ -6,6 +6,7 @@ const pango = @import("pango1");
 
 const app = @import("../app.zig");
 const config = @import("../../utils/config.zig");
+const color = @import("../../utils/color.zig");
 
 const GutterMode = config.LineNumberMode;
 const pango_scale: c_int = 1024;
@@ -144,14 +145,14 @@ fn gutterDraw(
 
     // background - use theme background (slightly different for contrast)
     const bg = if (cfg) |c| c.theme.background else 0x1e1e1e;
-    const bg_rgb = colorToRgb(bg);
+    const bg_rgb = color.colorToRgb(bg);
     cr.setSourceRgb(bg_rgb[0] * 0.9, bg_rgb[1] * 0.9, bg_rgb[2] * 0.9);
     cr.rectangle(0, 0, @floatFromInt(width), @floatFromInt(height));
     cr.fill();
 
     // text color - use comment color for line numbers (typically dimmer)
     const fg = if (cfg) |c| c.theme.comment else 0xbfbfbf;
-    const fg_rgb = colorToRgb(fg);
+    const fg_rgb = color.colorToRgb(fg);
     cr.setSourceRgb(fg_rgb[0], fg_rgb[1], fg_rgb[2]);
 
     const buffer = view.getBuffer();
@@ -254,8 +255,8 @@ fn getDigitWidth(view: *gtk.TextView, cfg: *const config.Config) c_int {
     const desc = pango.FontDescription.new();
     defer pango.FontDescription.free(desc);
 
-    const family_z = app.allocator.allocSentinel(u8, cfg.editor.font_family.len, 0) catch return 8;
-    defer app.allocator.free(family_z);
+    const family_z = app.allocator().allocSentinel(u8, cfg.editor.font_family.len, 0) catch return 8;
+    defer app.allocator().free(family_z);
     @memcpy(family_z, cfg.editor.font_family);
     pango.FontDescription.setFamily(desc, family_z.ptr);
     pango.FontDescription.setSize(desc, @as(c_int, cfg.editor.font_size) * pango_scale);
@@ -268,9 +269,3 @@ fn getDigitWidth(view: *gtk.TextView, cfg: *const config.Config) c_int {
     return if (width_px > 0) width_px else 8;
 }
 
-fn colorToRgb(color: u32) [3]f64 {
-    const r: f64 = @as(f64, @floatFromInt((color >> 16) & 0xff)) / 255.0;
-    const g: f64 = @as(f64, @floatFromInt((color >> 8) & 0xff)) / 255.0;
-    const b: f64 = @as(f64, @floatFromInt(color & 0xff)) / 255.0;
-    return .{ r, g, b };
-}

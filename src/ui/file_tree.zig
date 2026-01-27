@@ -84,7 +84,7 @@ pub fn applyConfig(tree_view: *gtk.TreeView, cfg: *const config.Config) void {
     ;
 
     const css = std.fmt.allocPrint(
-        app.allocator,
+        app.allocator(),
         \\@define-color theme_selected_bg_color #{X:0>6};
         \\@define-color theme_selected_fg_color #{X:0>6};
         \\.{s} {{
@@ -109,10 +109,10 @@ pub fn applyConfig(tree_view: *gtk.TreeView, cfg: *const config.Config) void {
             tree_css_class,
         },
     ) catch return;
-    defer app.allocator.free(css);
+    defer app.allocator().free(css);
 
-    const css_z = app.allocator.allocSentinel(u8, css.len, 0) catch return;
-    defer app.allocator.free(css_z);
+    const css_z = app.allocator().allocSentinel(u8, css.len, 0) catch return;
+    defer app.allocator().free(css_z);
     @memcpy(css_z, css);
 
     provider.loadFromData(css_z.ptr, @intCast(css_z.len));

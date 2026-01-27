@@ -11,6 +11,7 @@ const io = @import("io.zig");
 const static = @import("static.zig");
 const vim = @import("../vim/root.zig");
 const config = @import("../../utils/config.zig");
+const color_utils = @import("../../utils/color.zig");
 
 const current_line_alpha: f64 = 0.35;
 const pango_scale: c_int = 1024;
@@ -483,8 +484,8 @@ fn lineHighlightDraw(
     const y: c_int = line_y - rect.f_y;
     if (y + line_h < 0 or y > height) return;
 
-    const color = if (app.state) |s| s.config.theme.line_highlight else 0x2d2d2d;
-    const rgb = colorToRgb(color);
+    const hl_color = if (app.state) |s| s.config.theme.line_highlight else 0x2d2d2d;
+    const rgb = color_utils.colorToRgb(hl_color);
     cr.setSourceRgba(rgb[0], rgb[1], rgb[2], current_line_alpha);
     cr.rectangle(
         0,
@@ -538,7 +539,7 @@ fn applyFontAndTheme(view: *gtk.TextView, cfg: *const config.Config) void {
     const cursor = cfg.theme.cursor;
 
     const css = std.fmt.allocPrint(
-        app.allocator,
+        app.allocator(),
         \\.zinc-editor {{
         \\  font-family: "{s}";
         \\  font-size: {d}pt;
@@ -555,10 +556,10 @@ fn applyFontAndTheme(view: *gtk.TextView, cfg: *const config.Config) void {
     ,
         .{ cfg.editor.font_family, cfg.editor.font_size, bg, fg, cursor, bg, sel },
     ) catch return;
-    defer app.allocator.free(css);
+    defer app.allocator().free(css);
 
-    const css_z = app.allocator.allocSentinel(u8, css.len, 0) catch return;
-    defer app.allocator.free(css_z);
+    const css_z = app.allocator().allocSentinel(u8, css.len, 0) catch return;
+    defer app.allocator().free(css_z);
     @memcpy(css_z, css);
 
     view.as(gtk.Widget).addCssClass(editor_css_class.ptr);
@@ -575,8 +576,8 @@ fn applyTabWidth(view: *gtk.TextView, tab_width: u8, family: []const u8, size: u
     const desc = pango.FontDescription.new();
     defer pango.FontDescription.free(desc);
 
-    const family_z = app.allocator.allocSentinel(u8, family.len, 0) catch return;
-    defer app.allocator.free(family_z);
+    const family_z = app.allocator().allocSentinel(u8, family.len, 0) catch return;
+    defer app.allocator().free(family_z);
     @memcpy(family_z, family);
     pango.FontDescription.setFamily(desc, family_z.ptr);
     pango.FontDescription.setSize(desc, @as(c_int, size) * pango_scale);
@@ -592,11 +593,4 @@ fn applyTabWidth(view: *gtk.TextView, tab_width: u8, family: []const u8, size: u
     defer pango.TabArray.free(tabs);
     pango.TabArray.setTab(tabs, 0, pango.TabAlign.left, tab_px);
     view.setTabs(tabs);
-}
-
-fn colorToRgb(color: u32) [3]f64 {
-    const r: f64 = @as(f64, @floatFromInt((color >> 16) & 0xff)) / 255.0;
-    const g: f64 = @as(f64, @floatFromInt((color >> 8) & 0xff)) / 255.0;
-    const b: f64 = @as(f64, @floatFromInt(color & 0xff)) / 255.0;
-    return .{ r, g, b };
 }

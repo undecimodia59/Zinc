@@ -165,10 +165,13 @@ pub fn copyToClipboard(view: *gtk.TextView, buffer: *gtk.TextBuffer, start: *gtk
     clipboard.setText(text);
 }
 
+// Track paste mode for async callback (p vs P)
+var paste_before: bool = false;
+
 /// Paste from clipboard
 pub fn paste(view: *gtk.TextView, buffer: *gtk.TextBuffer, before: bool) void {
     _ = buffer;
-    _ = before;
+    paste_before = before;
     const display = view.as(gtk.Widget).getDisplay();
     const clipboard = display.getClipboard();
 
@@ -201,6 +204,17 @@ fn onClipboardRead(
 
     // Temporarily enable editing for paste
     view.setEditable(1);
+
+    if (!paste_before) {
+        // p: paste after cursor - move cursor forward first
+        var iter: gtk.TextIter = undefined;
+        buffer.getIterAtMark(&iter, buffer.getInsert());
+        if (iter.forwardChar() != 0) {
+            buffer.placeCursor(&iter);
+        }
+    }
+    // P: paste before cursor - just insert at current position
+
     buffer.insertAtCursor(text, -1);
     view.setEditable(was_editable);
 }

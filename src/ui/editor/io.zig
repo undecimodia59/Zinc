@@ -33,7 +33,15 @@ pub fn writeFileAtomic(path: []const u8, content: []const u8) !void {
 
     // Write temp + rename so we don't clobber the original on failure.
     const f = try dir_handle.createFile(tmp_name, .{ .truncate = true });
-    defer f.close();
+    errdefer dir_handle.deleteFile(tmp_name) catch {};
+
     try f.writeAll(content);
-    try dir_handle.rename(tmp_name, base);
+    try f.sync(); // Ensure data is flushed to disk
+    f.close();
+
+    // Rename after close and sync
+    dir_handle.rename(tmp_name, base) catch |err| {
+        dir_handle.deleteFile(tmp_name) catch {};
+        return err;
+    };
 }

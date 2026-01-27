@@ -198,7 +198,7 @@ const ScrollRequest = struct {
     yalign: f64,
 };
 
-fn scrollToCursor(view: *gtk.TextView, yalign: f64) void {
+pub fn scrollToCursor(view: *gtk.TextView, yalign: f64) void {
     const glib = @import("glib");
     pending_scroll = .{ .view = view, .yalign = yalign };
     if (scroll_idle_active) return;

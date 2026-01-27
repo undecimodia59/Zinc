@@ -89,8 +89,8 @@ pub fn findNext(buffer: *gtk.TextBuffer) bool {
     var match_end: gtk.TextIter = undefined;
 
     const pat = pattern[0..pattern_len];
-    const pat_z = app.allocator.allocSentinel(u8, pat.len, 0) catch return false;
-    defer app.allocator.free(pat_z);
+    const pat_z = app.allocator().allocSentinel(u8, pat.len, 0) catch return false;
+    defer app.allocator().free(pat_z);
     @memcpy(pat_z, pat);
 
     // Search forward from cursor (TEXT_ONLY = 0x2)
@@ -130,8 +130,8 @@ pub fn findPrev(buffer: *gtk.TextBuffer) bool {
     var match_end: gtk.TextIter = undefined;
 
     const pat = pattern[0..pattern_len];
-    const pat_z = app.allocator.allocSentinel(u8, pat.len, 0) catch return false;
-    defer app.allocator.free(pat_z);
+    const pat_z = app.allocator().allocSentinel(u8, pat.len, 0) catch return false;
+    defer app.allocator().free(pat_z);
     @memcpy(pat_z, pat);
 
     // Search backward from cursor

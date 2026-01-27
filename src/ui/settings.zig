@@ -4,6 +4,7 @@ const glib = @import("glib");
 const gobject = @import("gobject");
 
 const config = @import("../utils/config.zig");
+const color_utils = @import("../utils/color.zig");
 
 const Allocator = std.mem.Allocator;
 
@@ -216,7 +217,7 @@ fn applyColor(binding: Binding) void {
     const target: *u32 = castBinding(*u32, binding.target);
     const text_ptr = entry.as(gtk.Editable).getText();
     const text = std.mem.span(text_ptr);
-    if (parseHexColor(text)) |value| target.* = value;
+    if (color_utils.parseHexColor(text)) |value| target.* = value;
 }
 
 fn applyLineNumberMode(binding: Binding) void {
@@ -416,6 +417,10 @@ fn addThemePresetSelector(
     combo.as(gtk.Widget).setHexpand(1);
 
     state.theme_names = try config.listThemeNames(allocator);
+    errdefer {
+        for (state.theme_names.items) |name| allocator.free(name);
+        state.theme_names.deinit(allocator);
+    }
 
     // Add all themes (built-in + user)
     var current_index: c_int = 0;
@@ -520,17 +525,9 @@ fn makeFrame(allocator: Allocator, title: []const u8) *gtk.Frame {
     return gtk.Frame.new(z.ptr);
 }
 
-fn parseHexColor(value: []const u8) ?u32 {
-    if (value.len == 0) return null;
-    var s = value;
-    if (s[0] == '#') s = s[1..];
-    if (s.len != 6) return null;
-    return std.fmt.parseUnsigned(u32, s, 16) catch null;
-}
-
-fn setEntryText(allocator: Allocator, entry: *gtk.Entry, text: []const u8) void {
-    const z = allocator.dupeZ(u8, text) catch return;
-    defer allocator.free(z);
+fn setEntryText(alloc: Allocator, entry: *gtk.Entry, text: []const u8) void {
+    const z = alloc.dupeZ(u8, text) catch return;
+    defer alloc.free(z);
     entry.as(gtk.Editable).setText(z.ptr);
 }
 

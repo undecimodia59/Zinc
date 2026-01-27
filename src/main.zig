@@ -12,15 +12,20 @@ const ui_app = @import("ui/app.zig");
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+    const alloc = gpa.allocator();
+
+    // Set the global allocator for the app module
+    ui_app.setAllocator(alloc);
 
     // Parse command line arguments
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+    const args = try std.process.argsAlloc(alloc);
+    defer std.process.argsFree(alloc, args);
 
     var initial_path: ?[]const u8 = null;
+    defer if (initial_path) |p| alloc.free(p);
+
     if (args.len > 1) {
-        initial_path = try allocator.dupe(u8, args[1]);
+        initial_path = try alloc.dupe(u8, args[1]);
     }
 
     // Initialize GTK application
@@ -32,7 +37,7 @@ pub fn main() !void {
 
     // Store initial path in app data for later use
     if (initial_path) |path| {
-        _ = app.as(gobject.Object).setData("initial_path", @constCast(@ptrCast(path.ptr)));
+        _ = app.as(gobject.Object).setData("initial_path", @ptrCast(@constCast(path.ptr)));
         _ = app.as(gobject.Object).setData("initial_path_len", @ptrFromInt(path.len));
     }
 
@@ -50,6 +55,5 @@ pub fn main() !void {
     _ = app.as(gio.Application).run(1, @ptrCast(&run_argv));
 
     // Cleanup
-    if (initial_path) |path| allocator.free(path);
     if (ui_app.state) |s| s.deinit();
 }

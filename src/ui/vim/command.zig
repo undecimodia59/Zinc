@@ -5,6 +5,7 @@ const gtk = @import("gtk");
 const gdk = @import("gdk4");
 
 const app = @import("../app.zig");
+const motions = @import("motions.zig");
 const root = @import("root.zig");
 
 /// Enter command mode
@@ -48,23 +49,24 @@ pub fn handleKey(view: *gtk.TextView, keyval: c_uint) bool {
 /// Execute a vim command
 pub fn execute(view: *gtk.TextView, cmd: []const u8) void {
     if (cmd.len == 0) return;
+    const trimmed = std.mem.trim(u8, cmd, " ");
 
     // :w - save
-    if (std.mem.eql(u8, cmd, "w")) {
+    if (std.mem.eql(u8, trimmed, "w")) {
         const editor = @import("../editor/root.zig");
         editor.saveCurrentFile();
         return;
     }
 
     // :q - quit
-    if (std.mem.eql(u8, cmd, "q")) {
+    if (std.mem.eql(u8, trimmed, "q")) {
         const s = app.state orelse return;
         s.window.as(gtk.Window).close();
         return;
     }
 
     // :wq - save and quit
-    if (std.mem.eql(u8, cmd, "wq")) {
+    if (std.mem.eql(u8, trimmed, "wq")) {
         const editor = @import("../editor/root.zig");
         editor.saveCurrentFile();
         const s = app.state orelse return;
@@ -73,21 +75,21 @@ pub fn execute(view: *gtk.TextView, cmd: []const u8) void {
     }
 
     // :q! - force quit (no save check)
-    if (std.mem.eql(u8, cmd, "q!")) {
+    if (std.mem.eql(u8, trimmed, "q!")) {
         const s = app.state orelse return;
         s.window.as(gtk.Window).close();
         return;
     }
 
     // :!<cmd> - shell command
-    if (cmd.len > 1 and cmd[0] == '!') {
-        executeShell(view, cmd[1..]);
+    if (trimmed.len > 1 and trimmed[0] == '!') {
+        executeShell(view, trimmed[1..]);
         return;
     }
 
     // :e <file> - open file
-    if (cmd.len > 2 and std.mem.startsWith(u8, cmd, "e ")) {
-        const path = std.mem.trim(u8, cmd[2..], " ");
+    if (trimmed.len > 2 and std.mem.startsWith(u8, trimmed, "e ")) {
+        const path = std.mem.trim(u8, trimmed[2..], " ");
         if (path.len > 0) {
             const editor = @import("../editor/root.zig");
             editor.loadFile(path);
@@ -95,8 +97,20 @@ pub fn execute(view: *gtk.TextView, cmd: []const u8) void {
         return;
     }
 
+    // :<line> - jump to line number
+    if (trimmed.len > 0 and std.ascii.isDigit(trimmed[0])) {
+        const line = std.fmt.parseInt(u32, trimmed, 10) catch {
+            root.showStatus("Invalid line: {s}", .{trimmed});
+            return;
+        };
+        const line_num: u32 = if (line == 0) 1 else line;
+        motions.gotoLine(view.getBuffer(), line_num);
+        root.scrollToCursor(view, 0.0);
+        return;
+    }
+
     // Unknown command
-    root.showStatus("Unknown command: {s}", .{cmd});
+    root.showStatus("Unknown command: {s}", .{trimmed});
 }
 
 /// Execute a shell command and show output in popup
@@ -105,15 +119,15 @@ fn executeShell(view: *gtk.TextView, cmd: []const u8) void {
 
     // Execute command
     const result = std.process.Child.run(.{
-        .allocator = app.allocator,
+        .allocator = app.allocator(),
         .argv = &[_][]const u8{ "/bin/sh", "-c", cmd },
     }) catch |err| {
         root.showStatus("Failed to run command: {}", .{err});
         return;
     };
     defer {
-        app.allocator.free(result.stdout);
-        app.allocator.free(result.stderr);
+        app.allocator().free(result.stdout);
+        app.allocator().free(result.stderr);
     }
 
     // Show output in dialog
@@ -157,8 +171,8 @@ fn showOutputDialog(output: []const u8, cmd: []const u8) void {
     // Set output text
     const buffer = text_view.getBuffer();
     if (output.len > 0) {
-        const output_z = app.allocator.dupeZ(u8, output) catch return;
-        defer app.allocator.free(output_z);
+        const output_z = app.allocator().dupeZ(u8, output) catch return;
+        defer app.allocator().free(output_z);
         buffer.setText(output_z.ptr, @intCast(output.len));
     } else {
         buffer.setText("(no output)", -1);

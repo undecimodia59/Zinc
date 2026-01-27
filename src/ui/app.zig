@@ -15,9 +15,18 @@ const Allocator = std.mem.Allocator;
 /// Global application state
 pub var state: ?*AppState = null;
 
-/// Global allocator - must outlive the application
-var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-pub const allocator = gpa.allocator();
+/// Global allocator - set by main before GTK runs
+var global_allocator: ?Allocator = null;
+
+/// Get the global allocator (panics if not set)
+pub fn allocator() Allocator {
+    return global_allocator orelse @panic("Allocator not initialized - call setAllocator first");
+}
+
+/// Set the global allocator (called by main.zig)
+pub fn setAllocator(alloc: Allocator) void {
+    global_allocator = alloc;
+}
 
 /// Application state containing all UI components and runtime data
 pub const AppState = struct {
@@ -76,18 +85,20 @@ pub const AppState = struct {
 pub fn onActivate(app_ptr: *gtk.Application, user_data: *gtk.Application) callconv(.c) void {
     _ = user_data;
 
+    const alloc = allocator();
+
     // Create app state using global allocator
-    const app_state = allocator.create(AppState) catch {
+    const app_state = alloc.create(AppState) catch {
         std.debug.print("Failed to allocate AppState\n", .{});
         return;
     };
 
     // Load configuration
-    const app_config = allocator.create(config.Config) catch {
+    const app_config = alloc.create(config.Config) catch {
         std.debug.print("Failed to allocate Config\n", .{});
         return;
     };
-    app_config.* = config.Config.init(allocator);
+    app_config.* = config.Config.init(alloc);
     app_config.load() catch |err| {
         std.debug.print("Failed to load config: {}\n", .{err});
     };
@@ -156,7 +167,7 @@ pub fn onActivate(app_ptr: *gtk.Application, user_data: *gtk.Application) callco
 
     // Initialize state
     app_state.* = AppState{
-        .allocator = allocator,
+        .allocator = alloc,
         .window = window,
         .header_bar = header_result.header_bar,
         .title_label = title_label,
