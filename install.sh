@@ -24,9 +24,6 @@ echo "==> Installing icon and desktop entry to ${DATA_DIR}"
 mkdir -p "${DATA_DIR}/icons/hicolor/256x256/apps"
 mkdir -p "${DATA_DIR}/applications"
 
-install -m 644 "${PROJECT_DIR}/resources/icons/hicolor/index.theme" \
-  "${DATA_DIR}/icons/hicolor/index.theme"
-
 install -m 644 "${PROJECT_DIR}/resources/icons/hicolor/256x256/apps/zinc.png" \
   "${DATA_DIR}/icons/hicolor/256x256/apps/zinc.png"
 

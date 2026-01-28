@@ -86,14 +86,15 @@ fn setupAppIcon(window: *gtk.ApplicationWindow) void {
     const icon_theme = gtk.IconTheme.getForDisplay(display);
 
     var path_buf: [std.fs.max_path_bytes]u8 = undefined;
-    const icons_dir = std.fs.cwd().realpath("resources/icons", &path_buf) catch return;
-
-    const alloc = allocator();
-    const icons_z = alloc.allocSentinel(u8, icons_dir.len, 0) catch return;
-    defer alloc.free(icons_z);
-    @memcpy(icons_z, icons_dir);
-
-    icon_theme.addSearchPath(icons_z.ptr);
+    if (std.fs.cwd().realpath("resources/icons", &path_buf)) |icons_dir| {
+        const alloc = allocator();
+        const icons_z = alloc.allocSentinel(u8, icons_dir.len, 0) catch return;
+        defer alloc.free(icons_z);
+        @memcpy(icons_z, icons_dir);
+        icon_theme.addSearchPath(icons_z.ptr);
+    } else |_| {
+        // Installed builds rely on the icon theme; keep going.
+    }
 
     const icon_name: [:0]const u8 = "zinc";
     gtk.Window.setDefaultIconName(icon_name.ptr);
@@ -159,7 +160,8 @@ pub fn onActivate(app_ptr: *gtk.Application, user_data: *gtk.Application) callco
     paned.setShrinkStartChild(0);
     // Allow the end child (editor) to resize freely.
     paned.setShrinkEndChild(1);
-    paned.setResizeStartChild(1);
+    // Keep the tree width stable when the window resizes.
+    paned.setResizeStartChild(0);
     paned.setResizeEndChild(1);
 
     // Create file tree (left side)
