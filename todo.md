@@ -1,4 +1,4 @@
-# Zinc - Development Roadmap (v 0.2.1)
+# Zinc - Development Roadmap (v 0.2.3)
 
 A lightweight, fast text editor with IDE features. Inspired by Atom, Sublime Text, and Vim.
 

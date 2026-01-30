@@ -518,6 +518,12 @@ fn handleNormalMode(
             state.reset();
             return true;
         },
+        'u' => {
+            buffer.undo();
+            scrollToCursor(view, 0.5);
+            state.reset();
+            return true;
+        },
         'r' => {
             state.pending_replace = true;
             return true;
