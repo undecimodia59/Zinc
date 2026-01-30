@@ -11,6 +11,9 @@ const config = @import("../../utils/config.zig");
 const types = @import("types.zig");
 const zig_lang = @import("languages/zig.zig");
 const panther_lang = @import("languages/panther.zig");
+const python_lang = @import("languages/python.zig");
+const go_lang = @import("languages/go.zig");
+const markdown_lang = @import("languages/markdown.zig");
 
 const Token = types.Token;
 const TokenType = types.TokenType;
@@ -41,6 +44,9 @@ const tag_defs = [_]TagDef{
 const languages = [_]Language{
     zig_lang.language,
     panther_lang.language,
+    python_lang.language,
+    go_lang.language,
+    markdown_lang.language,
 };
 
 const State = struct {
