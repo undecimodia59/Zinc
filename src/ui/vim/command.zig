@@ -58,6 +58,16 @@ pub fn execute(view: *gtk.TextView, cmd: []const u8) void {
         return;
     }
 
+    // :w <file> - save as
+    if (std.mem.startsWith(u8, trimmed, "w ")) {
+        const path = std.mem.trim(u8, trimmed[2..], " ");
+        if (path.len > 0) {
+            const editor = @import("../editor/root.zig");
+            editor.saveFileAs(path);
+        }
+        return;
+    }
+
     // :q - quit
     if (std.mem.eql(u8, trimmed, "q")) {
         const s = app.state orelse return;

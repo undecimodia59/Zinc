@@ -143,6 +143,17 @@ pub fn onActivate(app_ptr: *gtk.Application, user_data: *gtk.Application) callco
         .{},
     );
 
+    // Command Palette Shortcut (Ctrl+Shift+P)
+    const palette_controller = gtk.EventControllerKey.new();
+    window.as(gtk.Widget).addController(palette_controller.as(gtk.EventController));
+    _ = gtk.EventControllerKey.signals.key_pressed.connect(
+        palette_controller,
+        *gtk.Window,
+        &onPaletteShortcut,
+        window.as(gtk.Window),
+        .{},
+    );
+
     // Main vertical box
     const main_box = gtk.Box.new(gtk.Orientation.vertical, 0);
 
@@ -214,6 +225,7 @@ pub fn onActivate(app_ptr: *gtk.Application, user_data: *gtk.Application) callco
     connectHeaderBarSignals(
         header_result.open_folder_btn,
         header_result.open_file_btn,
+        header_result.save_as_btn,
         header_result.settings_btn,
     );
 
@@ -259,6 +271,7 @@ const HeaderBarResult = struct {
     header_bar: *gtk.HeaderBar,
     open_folder_btn: *gtk.Button,
     open_file_btn: *gtk.Button,
+    save_as_btn: *gtk.Button,
     settings_btn: *gtk.Button,
 };
 
@@ -275,6 +288,11 @@ fn createHeaderBar() HeaderBarResult {
     open_file_btn.as(gtk.Widget).setTooltipText("Open File");
     header_bar.packStart(open_file_btn.as(gtk.Widget));
 
+    // Save As button
+    const save_as_btn = gtk.Button.newFromIconName("document-save-as-symbolic");
+    save_as_btn.as(gtk.Widget).setTooltipText("Save As");
+    header_bar.packStart(save_as_btn.as(gtk.Widget));
+
     // Settings button
     const settings_btn = gtk.Button.newFromIconName("emblem-system-symbolic");
     settings_btn.as(gtk.Widget).setTooltipText("Settings");
@@ -284,17 +302,28 @@ fn createHeaderBar() HeaderBarResult {
         .header_bar = header_bar,
         .open_folder_btn = open_folder_btn,
         .open_file_btn = open_file_btn,
+        .save_as_btn = save_as_btn,
         .settings_btn = settings_btn,
     };
 }
 
-fn connectHeaderBarSignals(open_folder_btn: *gtk.Button, open_file_btn: *gtk.Button, settings_btn: *gtk.Button) void {
+// Helper to add a separator to the header bar
+// (Not standard in GTK4 headerbar but we can use a spacer or just margin)
+
+fn connectHeaderBarSignals(
+    open_folder_btn: *gtk.Button,
+    open_file_btn: *gtk.Button,
+    save_as_btn: *gtk.Button,
+    settings_btn: *gtk.Button,
+) void {
     _ = gtk.Button.signals.clicked.connect(open_folder_btn, *gtk.Button, &onOpenFolderClicked, open_folder_btn, .{});
     _ = gtk.Button.signals.clicked.connect(open_file_btn, *gtk.Button, &onOpenFileClicked, open_file_btn, .{});
+    _ = gtk.Button.signals.clicked.connect(save_as_btn, *gtk.Button, &onSaveAsClicked, save_as_btn, .{});
     _ = gtk.Button.signals.clicked.connect(settings_btn, *gtk.Button, &onSettingsClicked, settings_btn, .{});
 }
 
-fn onOpenFolderClicked(_: *gtk.Button, _: *gtk.Button) callconv(.c) void {
+pub fn onOpenFolderClicked(btn: *gtk.Button, _: *gtk.Button) callconv(.c) void {
+    _ = btn;
     const app_state = state orelse return;
 
     const dialog = gtk.FileDialog.new();
@@ -334,7 +363,8 @@ fn onFolderSelected(
     }
 }
 
-fn onOpenFileClicked(_: *gtk.Button, _: *gtk.Button) callconv(.c) void {
+pub fn onOpenFileClicked(btn: *gtk.Button, _: *gtk.Button) callconv(.c) void {
+    _ = btn;
     const app_state = state orelse return;
 
     const dialog = gtk.FileDialog.new();
@@ -347,6 +377,67 @@ fn onOpenFileClicked(_: *gtk.Button, _: *gtk.Button) callconv(.c) void {
         &onFileSelected,
         null,
     );
+}
+
+pub fn showCommandPalette(vim_mode: bool) void {
+    const command_palette = @import("command_palette.zig");
+    const app_state = state orelse return;
+    command_palette.show(app_state.window.as(gtk.Window), if (vim_mode) .vim else .app);
+}
+
+pub fn onSaveAsClicked(_: *gtk.Button, _: *gtk.Button) callconv(.c) void {
+    const app_state = state orelse return;
+    const alloc = app_state.allocator;
+
+    const dialog = gtk.FileDialog.new();
+    dialog.setTitle("Save As");
+    dialog.setModal(1);
+
+    if (app_state.current_file) |path| {
+        // gio.File.newForPath requires null-terminated string
+        if (alloc.dupeZ(u8, path)) |path_z| {
+            defer alloc.free(path_z);
+            const file = gio.File.newForPath(path_z.ptr);
+            dialog.setInitialFile(file);
+            file.as(gobject.Object).unref();
+        } else |_| {
+            // If allocation fails, just skip setting initial file
+        }
+    }
+
+    dialog.save(
+        app_state.window.as(gtk.Window),
+        null,
+        &onSaveAsSelected,
+        null,
+    );
+}
+
+// ... (other functions)
+
+fn onSaveAsSelected(
+    source_object: ?*gobject.Object,
+    res: *gio.AsyncResult,
+    _: ?*anyopaque,
+) callconv(.c) void {
+    const glib = @import("glib");
+    const dialog: *gtk.FileDialog = @ptrCast(source_object orelse return);
+
+    var err: ?*glib.Error = null;
+    const file = dialog.saveFinish(res, &err);
+
+    if (err != null) {
+        glib.Error.free(err.?);
+        return;
+    }
+
+    if (file) |f| {
+        const path = f.getPath();
+        if (path) |p| {
+            editor.saveFileAs(std.mem.span(p));
+        }
+        f.as(gobject.Object).unref();
+    }
 }
 
 fn onSettingsClicked(_: *gtk.Button, _: *gtk.Button) callconv(.c) void {
@@ -413,10 +504,40 @@ pub fn openPath(path: []const u8) void {
     }
 }
 
-fn onCloseRequest(_: *gtk.Window, _: *gtk.Window) callconv(.c) c_int {
+fn onCloseRequest(window: *gtk.Window, _: *gtk.Window) callconv(.c) c_int {
     const app_state = state orelse return 0;
     const cfg = app_state.config;
 
+    // Check for unsaved changes
+    if (app_state.modified and app_state.current_file != null) {
+        const dialog = gtk.MessageDialog.new(
+            window,
+            .{}, // Flags
+            gtk.MessageType.question,
+            gtk.ButtonsType.none,
+            "Do you want to save changes to %s?",
+            std.fs.path.basename(app_state.current_file.?).ptr,
+        );
+        dialog.as(gtk.Window).setModal(1);
+
+        _ = dialog.as(gtk.Dialog).addButton("Cancel", @intFromEnum(gtk.ResponseType.cancel));
+        _ = dialog.as(gtk.Dialog).addButton("Don't Save", @intFromEnum(gtk.ResponseType.no));
+        _ = dialog.as(gtk.Dialog).addButton("Save", @intFromEnum(gtk.ResponseType.yes));
+
+        _ = gtk.Dialog.signals.response.connect(
+            dialog.as(gtk.Dialog),
+            *AppState,
+            &onCloseDialogResponse,
+            app_state,
+            .{},
+        );
+
+        dialog.as(gtk.Widget).show();
+
+        return 1; // Stop shutdown
+    }
+
+    // Save window state
     const pos = if (app_state.paned.getStartChild() != null)
         app_state.paned.getPosition()
     else
@@ -433,6 +554,47 @@ fn onCloseRequest(_: *gtk.Window, _: *gtk.Window) callconv(.c) c_int {
         std.debug.print("Failed to save config: {}\n", .{err});
     };
 
+    return 0;
+}
+
+fn onCloseDialogResponse(dialog: *gtk.Dialog, response_id: c_int, app_state: *AppState) callconv(.c) void {
+    const window = app_state.window;
+    dialog.as(gtk.Window).destroy();
+
+    switch (response_id) {
+        @intFromEnum(gtk.ResponseType.yes) => {
+            // Save and then close
+            editor.saveCurrentFile();
+            // Reset modified so next close request passes
+            app_state.modified = false;
+            window.as(gtk.Window).close();
+        },
+        @intFromEnum(gtk.ResponseType.no) => {
+            // Discard changes and close
+            app_state.modified = false;
+            window.as(gtk.Window).close();
+        },
+        else => {
+            // Cancel - do nothing, window stays open
+        },
+    }
+}
+
+fn onPaletteShortcut(
+    _: *gtk.EventControllerKey,
+    keyval: c_uint,
+    _: c_uint,
+    modifiers: gdk.ModifierType,
+    _: *gtk.Window,
+) callconv(.c) c_int {
+    // modifiers fields are bools in the zig binding
+    if ((keyval == 'p' or keyval == 'P') and
+        modifiers.control_mask and
+        modifiers.shift_mask)
+    {
+        showCommandPalette(false);
+        return 1;
+    }
     return 0;
 }
 

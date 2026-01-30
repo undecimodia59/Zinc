@@ -56,6 +56,7 @@
 //! | p | Paste after |
 //! | P | Paste before |
 //! | x | Delete char |
+//! | r{c} | Replace char |
 //! | : | Command mode |
 //! | [count] | Repeat count |
 //!
@@ -81,6 +82,7 @@
 const std = @import("std");
 const gtk = @import("gtk");
 const gdk = @import("gdk4");
+const gobject = @import("gobject");
 
 const app = @import("../app.zig");
 const command = @import("command.zig");
@@ -116,6 +118,7 @@ pub const State = struct {
     pending_operator: Operator = .none,
     pending_g: bool = false,
     pending_find: PendingFind = .none,
+    pending_replace: bool = false,
     last_find_char: u32 = 0,
     last_find_type: PendingFind = .none,
     visual_start: ?gtk.TextIter = null,
@@ -127,6 +130,7 @@ pub const State = struct {
         self.pending_operator = .none;
         self.pending_g = false;
         self.pending_find = .none;
+        self.pending_replace = false;
     }
 
     pub fn getCount(self: *State) u32 {
@@ -342,6 +346,22 @@ fn handleNormalMode(
         return false;
     }
 
+    if (state.pending_replace) {
+        if (keyval == gdk.KEY_Escape) {
+            state.reset();
+            return true;
+        }
+        const codepoint = gdk.keyvalToUnicode(keyval);
+        if (codepoint == 0) {
+            state.reset();
+            return true;
+        }
+        operators.replaceChar(view, buffer, codepoint, state.getCount());
+        scrollToCursor(view, 0.5);
+        state.reset();
+        return true;
+    }
+
     // Count prefix (digits 1-9, or 0 if count already started)
     if (keyval >= '1' and keyval <= '9') {
         state.addDigit(@intCast(keyval - '0'));
@@ -498,6 +518,10 @@ fn handleNormalMode(
             state.reset();
             return true;
         },
+        'r' => {
+            state.pending_replace = true;
+            return true;
+        },
         'p' => {
             operators.paste(view, buffer, false);
             state.reset();
@@ -509,7 +533,7 @@ fn handleNormalMode(
             return true;
         },
         ':' => {
-            command.enter(view);
+            app.showCommandPalette(true);
             state.reset();
             return true;
         },
@@ -838,7 +862,7 @@ pub fn enterNormalMode(view: *gtk.TextView) void {
     state.mode = .normal;
     state.reset();
     state.visual_start = null;
-    view.setEditable(0);
+    //view.setEditable(0);
 
     // Clear any selection by placing cursor at current insert position
     const buffer = view.getBuffer();
@@ -852,14 +876,14 @@ pub fn enterNormalMode(view: *gtk.TextView) void {
 
 pub fn enterInsertMode(view: *gtk.TextView) void {
     state.mode = .insert;
-    view.setEditable(1);
+    //view.setEditable(1);
     updateCursor(view);
     updateStatusBar();
 }
 
 fn enterVisualMode(view: *gtk.TextView, buffer: *gtk.TextBuffer, line_mode: bool) void {
     state.mode = if (line_mode) .visual_line else .visual;
-    view.setEditable(0);
+    //view.setEditable(0);
 
     // Store anchor at cursor position
     var iter: gtk.TextIter = undefined;
@@ -879,26 +903,60 @@ fn enterVisualMode(view: *gtk.TextView, buffer: *gtk.TextBuffer, line_mode: bool
 }
 
 fn updateCursor(view: *gtk.TextView) void {
-    // Ensure cursor is visible immediately
+    // 1. Immediate state change
+    const is_insert = (state.mode == .insert);
+    view.setOverwrite(if (is_insert) 0 else 1);
     view.setCursorVisible(1);
 
-    // Also schedule a deferred visibility update to handle GTK timing issues
-    // when switching between editable/non-editable states
+    // 2. Schedule a single high-priority refresh
+    // This ensures that even if GTK was busy, the visual update is forced.
     const glib = @import("glib");
     _ = glib.idleAddFull(
         glib.PRIORITY_HIGH_IDLE,
         struct {
             fn cb(data: ?*anyopaque) callconv(.c) c_int {
                 const v: *gtk.TextView = @ptrCast(@alignCast(data orelse return 0));
+
+                // Final sync of state
+                const current_insert = (state.mode == .insert);
+                v.setOverwrite(if (current_insert) 0 else 1);
                 v.setCursorVisible(1);
-                // Force a redraw to ensure cursor is rendered
+
+                // Force the redraw on the Widget interface
                 v.as(gtk.Widget).queueDraw();
-                return 0; // Remove source (run once)
+
+                return 0; // G_SOURCE_REMOVE
             }
         }.cb,
         view,
         null,
     );
+}
+
+fn applyCursorStyle(view: *gtk.TextView) void {
+    const provider = gtk.CssProvider.new();
+
+    // We target .zinc-editor to match the class added in editor/root.zig.
+    // We set min-width on the cursor node to force it to be a block.
+    const css =
+        \\ .zinc-editor {
+        \\   -GtkWidget-cursor-aspect-ratio: 1.0;
+        \\ }
+        \\ .zinc-editor text > cursor {
+        \\   background-color: #f1be16;
+        \\   color: #000000;
+        \\   min-width: 1ch;  /* Force width to 1 character width */
+        \\   min-height: 1em; /* Ensure height covers the line */
+        \\ }
+    ;
+
+    provider.loadFromData(css, @intCast(css.len));
+
+    // Use .as(gtk.Widget) to get the style context
+    const context = view.as(gtk.Widget).getStyleContext();
+
+    // Use .as(gtk.StyleProvider) for the cast
+    context.addProvider(provider.as(gtk.StyleProvider), gtk.STYLE_PROVIDER_PRIORITY_APPLICATION);
 }
 
 pub fn updateStatusBar() void {
@@ -938,6 +996,7 @@ pub fn showStatus(comptime fmt: []const u8, args: anytype) void {
 /// Initialize vim mode
 pub fn init(view: *gtk.TextView) void {
     state = .{};
+    applyCursorStyle(view);
     enterNormalMode(view);
 }
 
@@ -946,6 +1005,7 @@ pub fn deinit(view: *gtk.TextView) void {
     state.mode = .insert;
     view.setEditable(1);
     view.setCursorVisible(1);
+    view.setOverwrite(0);
 }
 
 /// Get the current mode name

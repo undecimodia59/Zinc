@@ -273,6 +273,24 @@ pub fn saveCurrentFile() void {
     state.setStatus(msg);
 }
 
+/// Save content to a specific path.
+pub fn saveFileAs(path: []const u8) void {
+    const state = app.state orelse return;
+
+    // Update current file path
+    if (state.current_file) |f| state.allocator.free(f);
+    state.current_file = state.allocator.dupe(u8, path) catch null;
+
+    // Update language based on new extension
+    syntax.setLanguageFromPath(path);
+
+    // Save
+    saveCurrentFile();
+
+    // Re-highlight
+    syntax.scheduleHighlight();
+}
+
 /// Update app state.modified.
 fn onBufferChanged(_: *gtk.TextBuffer, _: *gtk.TextBuffer) callconv(.c) void {
     const state = app.state orelse return;

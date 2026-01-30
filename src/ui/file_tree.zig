@@ -132,6 +132,159 @@ pub fn connectSignals(tree_view: *gtk.TreeView) void {
         tree_view,
         .{},
     );
+
+    const key_controller = gtk.EventControllerKey.new();
+    tree_view.as(gtk.Widget).addController(key_controller.as(gtk.EventController));
+    _ = gtk.EventControllerKey.signals.key_pressed.connect(
+        key_controller,
+        *gtk.TreeView,
+        &onTreeKeyPress,
+        tree_view,
+        .{},
+    );
+}
+
+fn onTreeKeyPress(
+    _: *gtk.EventControllerKey,
+    keyval: c_uint,
+    _: c_uint,
+    _: gdk.ModifierType,
+    tree_view: *gtk.TreeView,
+) callconv(.c) c_int {
+    if (keyval != gdk.KEY_Down and keyval != gdk.KEY_KP_Down and
+        keyval != gdk.KEY_Up and keyval != gdk.KEY_KP_Up)
+    {
+        return 0;
+    }
+
+    const model = tree_view.getModel() orelse return 0;
+    var cursor_path: ?*gtk.TreePath = null;
+    const cursor_path_ptr: ?**gtk.TreePath = @ptrCast(&cursor_path);
+    tree_view.getCursor(cursor_path_ptr, null);
+
+    if (cursor_path == null) {
+        if (keyval == gdk.KEY_Up or keyval == gdk.KEY_KP_Up) {
+            if (getLastVisiblePath(tree_view, model)) |path| {
+                defer gtk.TreePath.free(path);
+                setCursorAndScroll(tree_view, path);
+                return 1;
+            }
+        } else {
+            if (getFirstPath(model)) |path| {
+                defer gtk.TreePath.free(path);
+                setCursorAndScroll(tree_view, path);
+                return 1;
+            }
+        }
+        return 0;
+    }
+    defer gtk.TreePath.free(cursor_path.?);
+
+    if (keyval == gdk.KEY_Down or keyval == gdk.KEY_KP_Down) {
+        if (nextVisiblePath(tree_view, model, cursor_path.?)) |next_path| {
+            gtk.TreePath.free(next_path);
+        } else {
+            if (getFirstPath(model)) |path| {
+                defer gtk.TreePath.free(path);
+                setCursorAndScroll(tree_view, path);
+                return 1;
+            }
+        }
+    } else {
+        if (prevVisiblePath(tree_view, model, cursor_path.?)) |prev_path| {
+            gtk.TreePath.free(prev_path);
+        } else {
+            if (getLastVisiblePath(tree_view, model)) |path| {
+                defer gtk.TreePath.free(path);
+                setCursorAndScroll(tree_view, path);
+                return 1;
+            }
+        }
+    }
+
+    return 0;
+}
+
+fn setCursorAndScroll(tree_view: *gtk.TreeView, path: *gtk.TreePath) void {
+    tree_view.setCursor(path, null, 0);
+    tree_view.scrollToCell(path, null, 1, 0.5, 0.0);
+}
+
+fn getFirstPath(model: *gtk.TreeModel) ?*gtk.TreePath {
+    var iter: gtk.TreeIter = undefined;
+    if (model.getIterFirst(&iter) == 0) return null;
+    return model.getPath(&iter);
+}
+
+fn getLastVisiblePath(tree_view: *gtk.TreeView, model: *gtk.TreeModel) ?*gtk.TreePath {
+    const top_count = model.iterNChildren(null);
+    if (top_count <= 0) return null;
+
+    var iter: gtk.TreeIter = undefined;
+    if (model.iterNthChild(&iter, null, top_count - 1) == 0) return null;
+    return deepestVisibleChild(tree_view, model, &iter);
+}
+
+fn nextVisiblePath(tree_view: *gtk.TreeView, model: *gtk.TreeModel, current: *gtk.TreePath) ?*gtk.TreePath {
+    var iter: gtk.TreeIter = undefined;
+    if (model.getIter(&iter, current) == 0) return null;
+
+    if (tree_view.rowExpanded(current) != 0 and model.iterHasChild(&iter) != 0) {
+        var child: gtk.TreeIter = undefined;
+        if (model.iterChildren(&child, &iter) != 0) {
+            return model.getPath(&child);
+        }
+    }
+
+    var next_iter = iter;
+    if (model.iterNext(&next_iter) != 0) {
+        return model.getPath(&next_iter);
+    }
+
+    var parent: gtk.TreeIter = undefined;
+    var child_iter = iter;
+    while (model.iterParent(&parent, &child_iter) != 0) {
+        var sibling = parent;
+        if (model.iterNext(&sibling) != 0) {
+            return model.getPath(&sibling);
+        }
+        child_iter = parent;
+    }
+
+    return null;
+}
+
+fn prevVisiblePath(tree_view: *gtk.TreeView, model: *gtk.TreeModel, current: *gtk.TreePath) ?*gtk.TreePath {
+    var iter: gtk.TreeIter = undefined;
+    if (model.getIter(&iter, current) == 0) return null;
+
+    var prev_iter = iter;
+    if (model.iterPrevious(&prev_iter) != 0) {
+        return deepestVisibleChild(tree_view, model, &prev_iter);
+    }
+
+    var parent: gtk.TreeIter = undefined;
+    if (model.iterParent(&parent, &iter) != 0) {
+        return model.getPath(&parent);
+    }
+
+    return null;
+}
+
+fn deepestVisibleChild(tree_view: *gtk.TreeView, model: *gtk.TreeModel, start: *gtk.TreeIter) ?*gtk.TreePath {
+    var iter = start.*;
+    while (true) {
+        const path = model.getPath(&iter);
+        defer gtk.TreePath.free(path);
+        if (tree_view.rowExpanded(path) == 0) break;
+        if (model.iterHasChild(&iter) == 0) break;
+        const child_count = model.iterNChildren(&iter);
+        if (child_count <= 0) break;
+        var child: gtk.TreeIter = undefined;
+        if (model.iterNthChild(&child, &iter, child_count - 1) == 0) break;
+        iter = child;
+    }
+    return model.getPath(&iter);
 }
 
 /// Open a folder and populate the tree

@@ -134,6 +134,35 @@ pub fn deleteChar(view: *gtk.TextView, buffer: *gtk.TextBuffer, count: u32) void
     buffer.delete(&start, &end);
 }
 
+/// Replace character(s) at cursor with given unicode codepoint
+pub fn replaceChar(view: *gtk.TextView, buffer: *gtk.TextBuffer, codepoint: u32, count: u32) void {
+    _ = view;
+    var utf8_buf: [4]u8 = undefined;
+    if (codepoint > 0x10FFFF or (codepoint >= 0xD800 and codepoint <= 0xDFFF)) return;
+    const len = std.unicode.utf8Encode(@intCast(codepoint), &utf8_buf) catch return;
+
+    var iter: gtk.TextIter = undefined;
+    buffer.getIterAtMark(&iter, buffer.getInsert());
+
+    var i: u32 = 0;
+    while (i < count) : (i += 1) {
+        var start = iter;
+        var end = iter;
+        if (end.forwardChar() == 0) break;
+        buffer.delete(&start, &end);
+    utf8_buf[len] = 0;
+    buffer.insert(&start, @ptrCast(&utf8_buf), @intCast(len));
+        iter = start;
+    }
+
+    var cursor = iter;
+    if (cursor.backwardChar() != 0) {
+        buffer.placeCursor(&cursor);
+    } else {
+        buffer.placeCursor(&iter);
+    }
+}
+
 /// Delete visual selection
 pub fn deleteSelection(view: *gtk.TextView, buffer: *gtk.TextBuffer) void {
     var start: gtk.TextIter = undefined;

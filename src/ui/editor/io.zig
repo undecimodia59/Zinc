@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub const max_file_size: usize = 10 * 1024 * 1024;
+pub const max_file_size: usize = 1000 * 1024 * 1024;
 
 pub fn readUtf8File(
     allocator: std.mem.Allocator,

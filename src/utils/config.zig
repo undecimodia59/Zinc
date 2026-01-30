@@ -261,9 +261,6 @@ pub const Config = struct {
     recent_folders: std.ArrayList([]const u8),
 
     pub fn init(allocator: Allocator) Config {
-        // NOTE: recent_files/recent_folders are initialized as empty structs which works
-        // because std.ArrayList methods take allocator as parameter. Ideally should use
-        // std.ArrayList(...).init(allocator) for proper initialization.
         var cfg = Config{
             .allocator = allocator,
             .editor = .{},
