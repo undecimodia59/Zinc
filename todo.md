@@ -42,7 +42,7 @@ A lightweight, fast text editor with IDE features. Inspired by Atom, Sublime Tex
 - [x] Operators: d, c, y, p, x (dd, yy, cc for lines)
 - [x] Count prefix (e.g., 5j, 3w, 2dd)
 - [ ] Text objects: iw, aw, i", a", i(, a(
-- [ ] Search with / and n/N
+- [x] Search with / and n/N
 - [x] Command mode (:w, :q, :q!, :wq, :e file, :!cmd)
 - [x] Shell command output popup (:!<cmd>)
 - [x] Visual mode selection (v, V for line)
@@ -74,10 +74,10 @@ A lightweight, fast text editor with IDE features. Inspired by Atom, Sublime Tex
   - [x] Zig (priority)
   - [ ] C/C++
   - [ ] Rust
-  - [ ] Python
+  - [x] Python
   - [ ] JavaScript/TypeScript
-  - [ ] Go
-  - [ ] Markdown
+  - [x] Go
+  - [x] Markdown
   - [ ] JSON/YAML/TOML
   - [ ] HTML/CSS
   - [ ] Shell scripts
@@ -111,7 +111,7 @@ A lightweight, fast text editor with IDE features. Inspired by Atom, Sublime Tex
 - [ ] File icons by type
 
 ### Command Palette
-- [ ] Command palette (Ctrl+Shift+P)
+- [x] Command palette (Ctrl+Shift+P)
 - [ ] Fuzzy search commands
 - [ ] Show keybinding next to command
 - [ ] Recent commands
