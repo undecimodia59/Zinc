@@ -31,11 +31,7 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(exe);
 
     // Install desktop assets
-    b.installDirectory(.{
-        .source_dir = b.path("resources/icons/hicolor"),
-        .install_dir = .prefix,
-        .install_subdir = "share/icons/hicolor",
-    });
+    b.installFile("resources/icons/hicolor/256x256/apps/zinc.png", "share/icons/hicolor/256x256/apps/zinc.png");
     b.installFile("resources/zinc.desktop", "share/applications/zinc.desktop");
 
     const run_cmd = b.addRunArtifact(exe);
