@@ -12,6 +12,7 @@ Inspired by Atom, Sublime Text, and Vim.
 - **Theming** - 6 built-in themes + custom theme support
 - **Configurable** - JSON configuration with sensible defaults
 - **Modern UI** - Clean GTK4 interface with current line highlighting
+- **Syntax highlighting** - Zig, Panther, Python, Go, and Markdown
 
 ## Building
 
@@ -172,6 +173,8 @@ Vim mode is disabled by default. Enable it in settings or set `"vim_mode": true`
 | `p` | Paste after cursor |
 | `P` | Paste before cursor |
 | `x` | Delete character under cursor |
+| `u` | Undo |
+| `r{char}` | Replace character |
 
 #### Other
 
