@@ -874,6 +874,9 @@ pub fn enterNormalMode(view: *gtk.TextView) void {
     const buffer = view.getBuffer();
     var iter: gtk.TextIter = undefined;
     buffer.getIterAtMark(&iter, buffer.getInsert());
+    if (iter.endsLine() != 0 and iter.startsLine() == 0) {
+        _ = iter.backwardChar();
+    }
     buffer.placeCursor(&iter);
 
     updateCursor(view);

@@ -67,10 +67,16 @@ pub fn applyMotion(iter: *gtk.TextIter, motion: Motion, count: u32) void {
     while (i < count) : (i += 1) {
         switch (motion) {
             .left => {
-                _ = iter.backwardChar();
+                const line = iter.getLine();
+                if (iter.backwardChar() != 0 and iter.getLine() != line) {
+                    _ = iter.forwardChar();
+                }
             },
             .right => {
-                _ = iter.forwardChar();
+                const line = iter.getLine();
+                if (iter.forwardChar() != 0 and iter.getLine() != line) {
+                    _ = iter.backwardChar();
+                }
             },
             .up => {
                 _ = iter.backwardLine();

@@ -252,7 +252,9 @@ fn onClipboardRead(
 pub fn openLineBelow(view: *gtk.TextView, buffer: *gtk.TextBuffer) void {
     var iter: gtk.TextIter = undefined;
     buffer.getIterAtMark(&iter, buffer.getInsert());
-    _ = iter.forwardToLineEnd();
+    if (iter.endsLine() == 0) {
+        _ = iter.forwardToLineEnd();
+    }
     buffer.placeCursor(&iter);
 
     // Need to temporarily enable editing to insert
