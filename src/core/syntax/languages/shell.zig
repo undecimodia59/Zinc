@@ -13,8 +13,8 @@ pub const language = types.Language{
 };
 
 const keywords = [_][]const u8{
-    "if", "then", "else", "elif", "fi", "for", "in", "do", "done", "while", "until",
-    "case", "esac", "function", "select", "time", "coproc",
+    "if",   "then", "else",     "elif",   "fi",   "for",    "in",   "do", "done", "while", "until",
+    "case", "esac", "function", "select", "time", "coproc", "echo",
 };
 
 const special_keywords = [_][]const u8{

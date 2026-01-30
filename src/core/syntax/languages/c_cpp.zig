@@ -13,13 +13,12 @@ pub const language = types.Language{
 };
 
 const keywords = [_][]const u8{
-    "auto", "break", "case", "char", "const", "continue", "default", "do", "double",
-    "else", "enum", "extern", "float", "for", "goto", "if", "inline", "int", "long",
-    "register", "restrict", "return", "short", "signed", "sizeof", "static", "struct",
-    "switch", "typedef", "union", "unsigned", "void", "volatile", "while",
-    "class", "namespace", "public", "private", "protected", "template", "typename",
-    "using", "virtual", "constexpr", "nullptr", "new", "delete", "operator", "this",
-    "throw", "try", "catch",
+    "auto",   "break",    "case",      "char",     "const",    "continue", "default", "do",        "double",
+    "else",   "enum",     "extern",    "float",    "for",      "goto",     "if",      "inline",    "int",
+    "long",   "register", "restrict",  "return",   "short",    "signed",   "sizeof",  "static",    "struct",
+    "switch", "typedef",  "union",     "unsigned", "void",     "volatile", "while",   "class",     "namespace",
+    "public", "private",  "protected", "template", "typename", "using",    "virtual", "constexpr", "nullptr",
+    "new",    "delete",   "operator",  "this",     "throw",    "try",      "catch",
 };
 
 const special_keywords = [_][]const u8{
@@ -27,9 +26,9 @@ const special_keywords = [_][]const u8{
 };
 
 const builtin_types = [_][]const u8{
-    "bool", "size_t", "ssize_t", "uint8_t", "uint16_t", "uint32_t", "uint64_t",
-    "int8_t", "int16_t", "int32_t", "int64_t", "uintptr_t", "intptr_t",
-    "wchar_t", "char16_t", "char32_t",
+    "bool",     "size_t",   "ssize_t", "uint8_t", "uint16_t",  "uint32_t", "uint64_t",
+    "int8_t",   "int16_t",  "int32_t", "int64_t", "uintptr_t", "intptr_t", "wchar_t",
+    "char16_t", "char32_t",
 };
 
 fn isKeyword(word: []const u8) bool {
@@ -101,6 +100,56 @@ pub fn tokenize(allocator: std.mem.Allocator, source: []const u8) ![]Token {
 
     while (i < source.len) {
         const c = source[i];
+
+        if (c == '#' and (i == 0 or source[i - 1] == '\n')) {
+            const s_line = line;
+            const s_col = col;
+            i += 1;
+            col += 1;
+            while (i < source.len and std.ascii.isWhitespace(source[i])) {
+                i += 1;
+                col += 1;
+            }
+            const start = i;
+            while (i < source.len and isAsciiIdentContinue(source[i])) {
+                i += 1;
+                col += 1;
+            }
+            if (start < i) {
+                const word = source[start..i];
+                if (std.mem.eql(u8, word, "include")) {
+                    try addToken(allocator, &tokens, .keyword, s_line, s_col, line, col);
+                }
+            }
+            while (i < source.len and source[i] != '\n') {
+                if (source[i] == '"' or source[i] == '<') {
+                    const quote = source[i];
+                    const s_str_col = col;
+                    const s_str_line = line;
+                    i += 1;
+                    col += 1;
+                    while (i < source.len and source[i] != '\n') {
+                        if (quote == '"' and source[i] == '"') {
+                            i += 1;
+                            col += 1;
+                            break;
+                        }
+                        if (quote == '<' and source[i] == '>') {
+                            i += 1;
+                            col += 1;
+                            break;
+                        }
+                        i += 1;
+                        col += 1;
+                    }
+                    try addToken(allocator, &tokens, .string, s_str_line, s_str_col, line, col);
+                    continue;
+                }
+                i += 1;
+                col += 1;
+            }
+            continue;
+        }
 
         if (c == '\n') {
             line += 1;
@@ -266,7 +315,7 @@ pub fn tokenize(allocator: std.mem.Allocator, source: []const u8) ![]Token {
             } else if (isSpecial(word)) {
                 try addToken(allocator, &tokens, .special, s_line, s_col, line, col);
             } else if (expect_type_decl) {
-                try addToken(allocator, &tokens, .@"type", s_line, s_col, line, col);
+                try addToken(allocator, &tokens, .type, s_line, s_col, line, col);
                 expect_type_decl = false;
             } else if (expect_fn_name) {
                 try addToken(allocator, &tokens, .function, s_line, s_col, line, col);
@@ -275,7 +324,7 @@ pub fn tokenize(allocator: std.mem.Allocator, source: []const u8) ![]Token {
                 try addToken(allocator, &tokens, .param, s_line, s_col, line, col);
                 param_expect_name = false;
             } else if (param_type_context) {
-                const kind: TokenType = if (isBuiltinType(word)) .@"type" else .@"type";
+                const kind: TokenType = if (isBuiltinType(word)) .type else .type;
                 try addToken(allocator, &tokens, kind, s_line, s_col, line, col);
             } else if (expect_var_decl) {
                 try addToken(allocator, &tokens, .variable_decl, s_line, s_col, line, col);
@@ -285,7 +334,7 @@ pub fn tokenize(allocator: std.mem.Allocator, source: []const u8) ![]Token {
                 if (peekNonWhitespace(source, i) == '(') {
                     kind = .function;
                 }
-                if (isBuiltinType(word)) kind = .@"type";
+                if (isBuiltinType(word)) kind = .type;
                 try addToken(allocator, &tokens, kind, s_line, s_col, line, col);
             }
             continue;

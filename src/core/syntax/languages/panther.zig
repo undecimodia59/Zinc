@@ -8,7 +8,7 @@ const TokenType = types.TokenType;
 
 pub const language = types.Language{
     .name = "panther",
-    .extensions = &.{ ".panther" },
+    .extensions = &.{".panther"},
     .tokenize = tokenize,
 };
 
@@ -20,8 +20,8 @@ const Container = enum {
 };
 
 const keywords = [_][]const u8{
-    "var", "const", "struct", "enum", "error", "fn", "return", "if", "else", "for", "while",
-    "match", "defer", "try", "catch", "break", "continue", "pub", "import", "in",
+    "var",   "const", "struct", "enum",  "error", "fn",       "return", "if",     "else", "for", "while",
+    "match", "defer", "try",    "catch", "break", "continue", "pub",    "import", "in",
 };
 
 const special_keywords = [_][]const u8{
@@ -29,10 +29,9 @@ const special_keywords = [_][]const u8{
 };
 
 const builtin_types = [_][]const u8{
-    "bool", "byte", "char", "string", "void", "isize", "usize",
-    "i8", "i16", "i32", "i64", "i128", "i256",
-    "u8", "u16", "u32", "u64", "u128", "u256",
-    "f32", "f64",
+    "bool",    "byte", "char", "string", "void", "isize", "usize",
+    "i8",      "i16",  "i32",  "i64",    "i128", "i256",  "u8",
+    "u16",     "u32",  "u64",  "u128",   "u256", "f32",   "f64",
     "numeric",
 };
 
@@ -325,7 +324,7 @@ pub fn tokenize(allocator: std.mem.Allocator, source: []const u8) ![]Token {
                 try addToken(allocator, &tokens, kind, s_line, s_col, line, col);
                 expect_fn_name = false;
             } else if (expect_type_decl) {
-                try addToken(allocator, &tokens, .@"type", s_line, s_col, line, col);
+                try addToken(allocator, &tokens, .type, s_line, s_col, line, col);
                 expect_type_decl = false;
             } else if (expect_fn_name) {
                 try addToken(allocator, &tokens, .function, s_line, s_col, line, col);
@@ -335,9 +334,9 @@ pub fn tokenize(allocator: std.mem.Allocator, source: []const u8) ![]Token {
                 param_expect_name = false;
             } else if (param_type_context or struct_type_context or return_type_context) {
                 if (isBuiltinType(word)) {
-                    try addToken(allocator, &tokens, .@"type", s_line, s_col, line, col);
+                    try addToken(allocator, &tokens, .type, s_line, s_col, line, col);
                 } else {
-                    try addToken(allocator, &tokens, .@"type", s_line, s_col, line, col);
+                    try addToken(allocator, &tokens, .type, s_line, s_col, line, col);
                 }
             } else if (struct_value_context) {
                 try addToken(allocator, &tokens, .field_value, s_line, s_col, line, col);

@@ -8,7 +8,7 @@ const TokenType = types.TokenType;
 
 pub const language = types.Language{
     .name = "toml",
-    .extensions = &.{ ".toml", ".desktop" },
+    .extensions = &.{ ".toml", ".desktop", ".ini", ".cfg", ".env" },
     .tokenize = tokenize,
 };
 

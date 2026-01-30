@@ -8,7 +8,7 @@ const TokenType = types.TokenType;
 
 pub const language = types.Language{
     .name = "json",
-    .extensions = &.{ ".json" },
+    .extensions = &.{".json"},
     .tokenize = tokenize,
 };
 

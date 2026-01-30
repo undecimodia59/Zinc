@@ -9,7 +9,7 @@ pub const TokenType = enum {
     special,
     string,
     number,
-    @"type",
+    type,
     function,
     variable,
     variable_decl,
@@ -17,6 +17,7 @@ pub const TokenType = enum {
     field,
     enum_field,
     field_value,
+    attribute,
 };
 
 /// Highlighted span expressed as line + byte offsets.

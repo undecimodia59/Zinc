@@ -331,7 +331,8 @@ Example `~/.config/zinc/themes/mytheme.json`:
   "param": "#1f8ef1",
   "field": "#9b59b6",
   "enum_field": "#9b59b6",
-  "field_value": "#0f9d58"
+  "field_value": "#0f9d58",
+  "attribute": "#1f8ef1"
 }
 ```
 
@@ -357,6 +358,7 @@ Example `~/.config/zinc/themes/mytheme.json`:
 | `field` | Struct field name color |
 | `enum_field` | Enum field name color |
 | `field_value` | Struct field value color |
+| `attribute` | Attribute name color |
 
 Colors are specified as hex strings with `#` prefix (e.g., `"#ff5500"`).
 

@@ -53,6 +53,7 @@ pub const ThemeConfig = struct {
     field: u32 = 0xdcdcaa,
     enum_field: u32 = 0xc586c0,
     field_value: u32 = 0xce9178,
+    attribute: u32 = 0x9cdcfe,
 
     /// Apply a preset theme by name
     pub fn applyPreset(self: *ThemeConfig, allocator: Allocator, name: []const u8) !void {
@@ -78,6 +79,7 @@ pub const ThemeConfig = struct {
                 self.field = preset.field;
                 self.enum_field = preset.enum_field;
                 self.field_value = preset.field_value;
+                self.attribute = preset.attribute;
                 return;
             }
         }
@@ -105,6 +107,7 @@ pub const ThemePreset = struct {
     field: u32,
     enum_field: u32,
     field_value: u32,
+    attribute: u32,
 };
 
 /// Available theme presets
@@ -130,6 +133,7 @@ pub const theme_presets = [_]ThemePreset{
         .field = 0xdcdcaa,
         .enum_field = 0xc586c0,
         .field_value = 0xce9178,
+        .attribute = 0x9cdcfe,
     },
     // Light
     .{
@@ -152,6 +156,7 @@ pub const theme_presets = [_]ThemePreset{
         .field = 0x795e26,
         .enum_field = 0x7a3e9d,
         .field_value = 0xa31515,
+        .attribute = 0x001080,
     },
     // Dracula
     .{
@@ -174,6 +179,7 @@ pub const theme_presets = [_]ThemePreset{
         .field = 0x50fa7b,
         .enum_field = 0xff79c6,
         .field_value = 0xf1fa8c,
+        .attribute = 0x8be9fd,
     },
     // Gruvbox Dark
     .{
@@ -196,6 +202,7 @@ pub const theme_presets = [_]ThemePreset{
         .field = 0xfabd2f,
         .enum_field = 0xd3869b,
         .field_value = 0xb8bb26,
+        .attribute = 0x83a598,
     },
     // Nord
     .{
@@ -218,6 +225,7 @@ pub const theme_presets = [_]ThemePreset{
         .field = 0x88c0d0,
         .enum_field = 0xb48ead,
         .field_value = 0xa3be8c,
+        .attribute = 0x81a1c1,
     },
     // One Dark
     .{
@@ -240,6 +248,7 @@ pub const theme_presets = [_]ThemePreset{
         .field = 0x61afef,
         .enum_field = 0xc678dd,
         .field_value = 0x98c379,
+        .attribute = 0xe06c75,
     },
 };
 
@@ -450,6 +459,7 @@ const ThemeConfigFile = struct {
     field: ?[]const u8 = null,
     enum_field: ?[]const u8 = null,
     field_value: ?[]const u8 = null,
+    attribute: ?[]const u8 = null,
 };
 
 const UiConfigFile = struct {
@@ -622,6 +632,12 @@ fn applyThemeFields(self: *Config, parsed: ThemeConfigFile) !bool {
     if (parsed.field_value) |v| {
         if (parseHexColor(v)) |c| {
             self.theme.field_value = c;
+            colors_set = true;
+        }
+    }
+    if (parsed.attribute) |v| {
+        if (parseHexColor(v)) |c| {
+            self.theme.attribute = c;
             colors_set = true;
         }
     }
@@ -950,7 +966,8 @@ fn ensureExampleTheme(allocator: Allocator) !void {
         \\  "param": "#9cdcfe",
         \\  "field": "#dcdcaa",
         \\  "enum_field": "#c586c0",
-        \\  "field_value": "#ce9178"
+        \\  "field_value": "#ce9178",
+        \\  "attribute": "#9cdcfe"
         \\}
         \\
     ;

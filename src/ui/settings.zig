@@ -590,6 +590,7 @@ const field_meta = [_]FieldMeta{
     .{ .path = "theme.field", .label = "Field", .kind = .color },
     .{ .path = "theme.enum_field", .label = "Enum field", .kind = .color },
     .{ .path = "theme.field_value", .label = "Field value", .kind = .color },
+    .{ .path = "theme.attribute", .label = "Attribute", .kind = .color },
 
     .{ .path = "ui.file_tree_width", .label = "File tree width", .kind = .int_u16, .min = 140, .max = 400, .step = 10 },
     .{ .path = "ui.window_width", .label = "Window width", .kind = .int_u16, .min = 640, .max = 3840, .step = 10 },

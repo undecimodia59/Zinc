@@ -39,7 +39,7 @@ const tag_defs = [_]TagDef{
     .{ .name = "syntax.special", .kind = .special },
     .{ .name = "syntax.string", .kind = .string },
     .{ .name = "syntax.number", .kind = .number },
-    .{ .name = "syntax.type", .kind = .@"type" },
+    .{ .name = "syntax.type", .kind = .type },
     .{ .name = "syntax.function", .kind = .function },
     .{ .name = "syntax.variable", .kind = .variable },
     .{ .name = "syntax.variable_decl", .kind = .variable_decl },
@@ -47,6 +47,7 @@ const tag_defs = [_]TagDef{
     .{ .name = "syntax.field", .kind = .field },
     .{ .name = "syntax.enum_field", .kind = .enum_field },
     .{ .name = "syntax.field_value", .kind = .field_value },
+    .{ .name = "syntax.attribute", .kind = .attribute },
 };
 
 // Add new languages by defining a tokenizer in languages/ and registering here.
@@ -186,7 +187,7 @@ fn colorForKind(cfg: *const config.Config, kind: TokenType) u32 {
         .special => cfg.theme.special,
         .string => cfg.theme.string,
         .number => cfg.theme.number,
-        .@"type" => cfg.theme.type,
+        .type => cfg.theme.type,
         .function => cfg.theme.function,
         .variable => cfg.theme.variable,
         .variable_decl => cfg.theme.variable_decl,
@@ -194,6 +195,7 @@ fn colorForKind(cfg: *const config.Config, kind: TokenType) u32 {
         .field => cfg.theme.field,
         .enum_field => cfg.theme.enum_field,
         .field_value => cfg.theme.field_value,
+        .attribute => cfg.theme.attribute,
     };
 }
 

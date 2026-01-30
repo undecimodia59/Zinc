@@ -8,7 +8,7 @@ const TokenType = types.TokenType;
 
 pub const language = types.Language{
     .name = "zig",
-    .extensions = &.{ ".zig" },
+    .extensions = &.{".zig"},
     .tokenize = tokenize,
 };
 
@@ -19,26 +19,28 @@ const Container = enum {
 };
 
 const keywords = [_][]const u8{
-    "align", "allowzero", "and", "anyframe", "anytype", "asm", "async", "await",
-    "break", "catch", "comptime", "const", "continue", "defer", "else", "enum",
-    "errdefer", "error", "export", "extern", "fn", "for", "if", "inline", "linksection",
-    "noalias", "noinline", "nosuspend", "opaque", "or", "orelse", "packed",
-    "pub", "resume", "return", "struct", "suspend", "switch", "test", "threadlocal",
-    "try", "union", "unreachable", "usingnamespace", "var", "volatile", "while",
+    "align",       "allowzero", "and",         "anyframe",       "anytype",  "asm",      "async",  "await",
+    "break",       "catch",     "comptime",    "const",          "continue", "defer",    "else",   "enum",
+    "errdefer",    "error",     "export",      "extern",         "fn",       "for",      "if",     "inline",
+    "linksection", "noalias",   "noinline",    "nosuspend",      "opaque",   "or",       "orelse", "packed",
+    "pub",         "resume",    "return",      "struct",         "suspend",  "switch",   "test",   "threadlocal",
+    "try",         "union",     "unreachable", "usingnamespace", "var",      "volatile", "while",
 };
 
-const special_keywords = [_][]const u8{
-    "null", "true", "false", "undefined", "unreachable", "!", "?"
-};
+const special_keywords = [_][]const u8{ "null", "true", "false", "undefined", "unreachable", "!", "?" };
 
 const builtin_types = [_][]const u8{
-    "bool", "isize", "usize",
-    "u8", "u16", "u32", "u64", "u128",
-    "i8", "i16", "i32", "i64", "i128",
-    "f16", "f32", "f64", "f80", "f128",
-    "c_short", "c_ushort", "c_int", "c_uint", "c_long", "c_ulong", "c_longlong", "c_ulonglong",
-    "c_longdouble", "c_void",
-    "noreturn", "type", "anyopaque", "anyerror",
+    "bool",       "isize",       "usize",
+    "u8",         "u16",         "u32",
+    "u64",        "u128",        "i8",
+    "i16",        "i32",         "i64",
+    "i128",       "f16",         "f32",
+    "f64",        "f80",         "f128",
+    "c_short",    "c_ushort",    "c_int",
+    "c_uint",     "c_long",      "c_ulong",
+    "c_longlong", "c_ulonglong", "c_longdouble",
+    "c_void",     "noreturn",    "type",
+    "anyopaque",  "anyerror",
 };
 
 fn isKeyword(word: []const u8) bool {
@@ -333,9 +335,9 @@ pub fn tokenize(allocator: std.mem.Allocator, source: []const u8) ![]Token {
                 param_expect_name = false;
             } else if (param_type_context or struct_type_context or return_type_context) {
                 if (isBuiltinType(word)) {
-                    try addToken(allocator, &tokens, .@"type", s_line, s_col, line, col);
+                    try addToken(allocator, &tokens, .type, s_line, s_col, line, col);
                 } else {
-                    try addToken(allocator, &tokens, .@"type", s_line, s_col, line, col);
+                    try addToken(allocator, &tokens, .type, s_line, s_col, line, col);
                 }
             } else if (struct_value_context) {
                 try addToken(allocator, &tokens, .field_value, s_line, s_col, line, col);

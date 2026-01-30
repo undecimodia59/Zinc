@@ -13,18 +13,18 @@ pub const language = types.Language{
 };
 
 const keywords = [_][]const u8{
-    "and", "as", "assert", "async", "await", "break", "case", "class", "continue", "def",
-    "del", "elif", "else", "except", "finally", "for", "from", "global", "if", "import",
-    "in", "is", "lambda", "match", "nonlocal", "not", "or", "pass", "raise", "return",
-    "try", "while", "with", "yield",
+    "and", "as",    "assert", "async",  "await",    "break", "case", "class",  "continue", "def",
+    "del", "elif",  "else",   "except", "finally",  "for",   "from", "global", "if",       "import",
+    "in",  "is",    "lambda", "match",  "nonlocal", "not",   "or",   "pass",   "raise",    "return",
+    "try", "while", "with",   "yield",
 };
 
 const special_keywords = [_][]const u8{
-    "True", "False", "None",
+    "True", "False", "None", "__name__",
 };
 
 const builtin_types = [_][]const u8{
-    "bool", "int", "float", "str", "bytes", "bytearray", "list", "tuple", "set", "dict",
+    "bool",   "int",  "float",   "str", "bytes", "bytearray", "list", "tuple", "set", "dict",
     "object", "type", "complex",
 };
 
@@ -217,13 +217,13 @@ pub fn tokenize(allocator: std.mem.Allocator, source: []const u8) ![]Token {
                 try addToken(allocator, &tokens, .function, s_line, s_col, line, col);
                 expect_fn_name = false;
             } else if (expect_class_name) {
-                try addToken(allocator, &tokens, .@"type", s_line, s_col, line, col);
+                try addToken(allocator, &tokens, .type, s_line, s_col, line, col);
                 expect_class_name = false;
             } else if (param_expect_name and !param_type_context) {
                 try addToken(allocator, &tokens, .param, s_line, s_col, line, col);
                 param_expect_name = false;
             } else if (param_type_context or return_type_context) {
-                const kind: TokenType = if (isBuiltinType(word)) .@"type" else .@"type";
+                const kind: TokenType = if (isBuiltinType(word)) .type else .type;
                 try addToken(allocator, &tokens, kind, s_line, s_col, line, col);
             } else {
                 var kind: TokenType = .variable;
