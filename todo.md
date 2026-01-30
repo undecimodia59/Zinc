@@ -72,15 +72,15 @@ A lightweight, fast text editor with IDE features. Inspired by Atom, Sublime Tex
 - [x] Modular tokenizer-based highlighting core
 - [ ] Language support:
   - [x] Zig (priority)
-  - [ ] C/C++
-  - [ ] Rust
+  - [x] C/C++
+  - [x] Rust
   - [x] Python
-  - [ ] JavaScript/TypeScript
+  - [x] JavaScript/TypeScript
   - [x] Go
   - [x] Markdown
-  - [ ] JSON/YAML/TOML
-  - [ ] HTML/CSS
-  - [ ] Shell scripts
+  - [x] JSON/YAML/TOML
+  - [x] HTML/CSS
+  - [x] Shell scripts
 - [x] Theme-aware token colors
 - [ ] Bracket matching highlight
 

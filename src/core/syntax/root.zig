@@ -14,6 +14,15 @@ const panther_lang = @import("languages/panther.zig");
 const python_lang = @import("languages/python.zig");
 const go_lang = @import("languages/go.zig");
 const markdown_lang = @import("languages/markdown.zig");
+const c_cpp_lang = @import("languages/c_cpp.zig");
+const rust_lang = @import("languages/rust.zig");
+const js_lang = @import("languages/javascript.zig");
+const json_lang = @import("languages/json.zig");
+const yaml_lang = @import("languages/yaml.zig");
+const toml_lang = @import("languages/toml.zig");
+const html_lang = @import("languages/html.zig");
+const css_lang = @import("languages/css.zig");
+const shell_lang = @import("languages/shell.zig");
 
 const Token = types.Token;
 const TokenType = types.TokenType;
@@ -47,6 +56,15 @@ const languages = [_]Language{
     python_lang.language,
     go_lang.language,
     markdown_lang.language,
+    c_cpp_lang.language,
+    rust_lang.language,
+    js_lang.language,
+    json_lang.language,
+    yaml_lang.language,
+    toml_lang.language,
+    html_lang.language,
+    css_lang.language,
+    shell_lang.language,
 };
 
 const State = struct {
