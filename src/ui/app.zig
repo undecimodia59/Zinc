@@ -28,6 +28,9 @@ pub fn setAllocator(alloc: Allocator) void {
     global_allocator = alloc;
 }
 
+const buffer_mod = @import("../core/buffer.zig");
+const tabs = @import("tabs.zig");
+
 /// Application state containing all UI components and runtime data
 pub const AppState = struct {
     allocator: Allocator,
@@ -50,20 +53,20 @@ pub const AppState = struct {
     ai_overlay_box: *gtk.Box,
     ai_overlay_label: *gtk.Label,
 
+    // Tab/buffer management
+    buffers: buffer_mod.BufferManager,
+    tab_bar: tabs.TabBar,
+
     // Runtime state
     current_path: ?[]const u8,
-    current_file: ?[]const u8,
     file_tree_position: c_int,
-
-    // Added modified to fix leak on editor.getContent()
-    modified: bool,
     force_quit: bool, // Skip save confirmation (for :q!)
 
     gutter: *gtk.DrawingArea,
 
     pub fn deinit(self: *AppState) void {
         if (self.current_path) |p| self.allocator.free(p);
-        if (self.current_file) |f| self.allocator.free(f);
+        self.buffers.deinit();
         self.file_tree_scroll.as(gobject.Object).unref();
         editor.deinit();
         self.config.deinit();
@@ -80,9 +83,6 @@ pub const AppState = struct {
         _ = self.statusbar.push(0, message.ptr);
     }
 
-    pub fn setModified(self: *AppState, m: bool) void {
-        self.modified = m;
-    }
 };
 
 fn setupAppIcon(window: *gtk.ApplicationWindow) void {
@@ -163,9 +163,13 @@ pub fn onActivate(app_ptr: *gtk.Application, user_data: *gtk.Application) callco
 
     // Create header bar
     const header_result = createHeaderBar();
-    const title_label = gtk.Label.new("Zinc IDE");
+    const title_label = gtk.Label.new("Zinc");
     header_result.header_bar.setTitleWidget(title_label.as(gtk.Widget));
     window.as(gtk.Window).setTitlebar(header_result.header_bar.as(gtk.Widget));
+
+    // Create tab bar
+    const tab_bar = tabs.TabBar.create(alloc);
+    main_box.append(tab_bar.container.as(gtk.Widget));
 
     // Create paned container
     const paned = gtk.Paned.new(gtk.Orientation.horizontal);
@@ -219,14 +223,17 @@ pub fn onActivate(app_ptr: *gtk.Application, user_data: *gtk.Application) callco
         .line_highlight = editor_result.line_highlight,
         .ai_overlay_box = editor_result.ai_overlay_box,
         .ai_overlay_label = editor_result.ai_overlay_label,
+        .buffers = buffer_mod.BufferManager.init(alloc),
+        .tab_bar = tab_bar,
         .current_path = null,
-        .current_file = null,
         .file_tree_position = @intCast(app_config.ui.file_tree_width),
-        .modified = false,
         .force_quit = false,
         .gutter = editor_result.gutter,
     };
     state = app_state;
+
+    // Apply tab bar theme
+    tabs.applyTheme(app_state);
 
     // Connect header bar button signals
     connectHeaderBarSignals(
@@ -400,15 +407,17 @@ pub fn onSaveAsClicked(_: *gtk.Button, _: *gtk.Button) callconv(.c) void {
     dialog.setTitle("Save As");
     dialog.setModal(1);
 
-    if (app_state.current_file) |path| {
-        // gio.File.newForPath requires null-terminated string
-        if (alloc.dupeZ(u8, path)) |path_z| {
-            defer alloc.free(path_z);
-            const file = gio.File.newForPath(path_z.ptr);
-            dialog.setInitialFile(file);
-            file.as(gobject.Object).unref();
-        } else |_| {
-            // If allocation fails, just skip setting initial file
+    if (app_state.buffers.getActive()) |buf| {
+        if (buf.path) |path| {
+            // gio.File.newForPath requires null-terminated string
+            if (alloc.dupeZ(u8, path)) |path_z| {
+                defer alloc.free(path_z);
+                const file = gio.File.newForPath(path_z.ptr);
+                dialog.setInitialFile(file);
+                file.as(gobject.Object).unref();
+            } else |_| {
+                // If allocation fails, just skip setting initial file
+            }
         }
     }
 
@@ -522,21 +531,19 @@ fn onCloseRequest(window: *gtk.Window, _: *gtk.Window) callconv(.c) c_int {
     const app_state = state orelse return 0;
     const cfg = app_state.config;
 
-    // Check for unsaved changes (skip if force_quit from :q!)
-    if (app_state.modified and app_state.current_file != null and !app_state.force_quit) {
+    // Check for unsaved changes (skip if force_quit from :qa!)
+    if (app_state.buffers.hasUnsavedChanges() and !app_state.force_quit) {
         const dialog = gtk.MessageDialog.new(
             window,
-            .{}, // Flags
+            .{},
             gtk.MessageType.question,
             gtk.ButtonsType.none,
-            "Do you want to save changes to %s?",
-            std.fs.path.basename(app_state.current_file.?).ptr,
+            "You have unsaved changes. Quit anyway?",
         );
         dialog.as(gtk.Window).setModal(1);
 
         _ = dialog.as(gtk.Dialog).addButton("Cancel", @intFromEnum(gtk.ResponseType.cancel));
-        _ = dialog.as(gtk.Dialog).addButton("Don't Save", @intFromEnum(gtk.ResponseType.no));
-        _ = dialog.as(gtk.Dialog).addButton("Save", @intFromEnum(gtk.ResponseType.yes));
+        _ = dialog.as(gtk.Dialog).addButton("Quit without saving", @intFromEnum(gtk.ResponseType.no));
 
         _ = gtk.Dialog.signals.response.connect(
             dialog.as(gtk.Dialog),
@@ -576,16 +583,9 @@ fn onCloseDialogResponse(dialog: *gtk.Dialog, response_id: c_int, app_state: *Ap
     dialog.as(gtk.Window).destroy();
 
     switch (response_id) {
-        @intFromEnum(gtk.ResponseType.yes) => {
-            // Save and then close
-            editor.saveCurrentFile();
-            // Reset modified so next close request passes
-            app_state.modified = false;
-            window.as(gtk.Window).close();
-        },
         @intFromEnum(gtk.ResponseType.no) => {
-            // Discard changes and close
-            app_state.modified = false;
+            // Quit without saving
+            app_state.force_quit = true;
             window.as(gtk.Window).close();
         },
         else => {

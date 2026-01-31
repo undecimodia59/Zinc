@@ -163,9 +163,52 @@ pub fn deinit() void {
     syntax.deinit();
 }
 
-/// Load a file into the editor.
+const tabs = @import("../tabs.zig");
+
+/// Load a file into the editor (creates new buffer/tab)
 pub fn loadFile(path: []const u8) void {
+    const state = app.state orelse return;
+
+    // Save current buffer state before switching
+    tabs.saveCurrentBufferState(state);
+
+    // Open in buffer manager (creates new or switches to existing)
+    _ = state.buffers.open(path) catch {
+        state.setStatus("Error: Out of memory");
+        return;
+    };
+
+    // Load content into editor
+    loadFileInternal(path, false);
+
+    // Refresh tab bar
+    state.tab_bar.refresh(&state.buffers);
+}
+
+/// Internal file load - used by tabs.zig when switching buffers
+pub fn loadFileInternal(path: []const u8, _: bool) void {
     loadOrCreateFile(path);
+}
+
+/// Clear editor for untitled buffer
+pub fn clearEditor() void {
+    const state = app.state orelse return;
+    const buffer = state.code_view.getBuffer();
+    buffer.setText("", 0);
+
+    syntax.setLanguageFromPath("");
+
+    var start_iter: gtk.TextIter = undefined;
+    buffer.getStartIter(&start_iter);
+    buffer.placeCursor(&start_iter);
+
+    if (state.config.editor.show_line_numbers) {
+        gutter.setWidthForView(state.code_view, state.gutter, state.config);
+        gutter.queueRedrawSoon();
+    }
+
+    _ = state.code_view.as(gtk.Widget).grabFocus();
+    syntax.scheduleHighlight();
 }
 
 /// Load file if it exists; otherwise open a blank buffer and set the path for save.
@@ -192,11 +235,7 @@ pub fn loadOrCreateFile(path: []const u8) void {
             buffer.placeCursor(&start_iter);
             state.code_view.scrollToMark(buffer.getInsert(), 0.0, 1, 0.0, 0.0);
 
-            if (state.current_file) |f| state.allocator.free(f);
-            state.current_file = state.allocator.dupe(u8, path) catch null;
-
-            state.modified = false;
-            updateWindowTitle();
+            tabs.markSaved(); // New file starts as "saved"
 
             if (state.config.editor.show_line_numbers) {
                 gutter.setWidthForView(state.code_view, state.gutter, state.config);
@@ -212,7 +251,7 @@ pub fn loadOrCreateFile(path: []const u8) void {
             const status = std.fmt.bufPrintZ(
                 &status_buf,
                 "New file: {s}",
-                .{ std.fs.path.basename(path) },
+                .{std.fs.path.basename(path)},
             ) catch "New file";
             state.setStatus(status);
 
@@ -246,11 +285,7 @@ pub fn loadOrCreateFile(path: []const u8) void {
 
     state.code_view.scrollToMark(buffer.getInsert(), 0.0, 1, 0.0, 0.0);
 
-    if (state.current_file) |f| state.allocator.free(f);
-    state.current_file = state.allocator.dupe(u8, path) catch null;
-
-    state.modified = false;
-    updateWindowTitle();
+    tabs.markSaved();
 
     if (state.config.editor.show_line_numbers) {
         gutter.setWidthForView(state.code_view, state.gutter, state.config);
@@ -325,8 +360,13 @@ pub fn applyConfig(cfg: *const config.Config) void {
 pub fn saveCurrentFile() void {
     const state = app.state orelse return;
 
-    const path = state.current_file orelse {
+    const buf = state.buffers.getActive() orelse {
         state.setStatus("No file to save");
+        return;
+    };
+
+    const path = buf.path orelse {
+        state.setStatus("No file path - use Save As");
         return;
     };
 
@@ -342,8 +382,7 @@ pub fn saveCurrentFile() void {
         return;
     };
 
-    state.modified = false;
-    updateWindowTitle();
+    tabs.markSaved();
 
     var sb: [512:0]u8 = undefined;
     const msg = std.fmt.bufPrintZ(
@@ -357,10 +396,11 @@ pub fn saveCurrentFile() void {
 /// Save content to a specific path.
 pub fn saveFileAs(path: []const u8) void {
     const state = app.state orelse return;
+    const buf = state.buffers.getActive() orelse return;
 
-    // Update current file path
-    if (state.current_file) |f| state.allocator.free(f);
-    state.current_file = state.allocator.dupe(u8, path) catch null;
+    // Update buffer path
+    if (buf.path) |p| state.allocator.free(p);
+    buf.path = state.allocator.dupe(u8, path) catch null;
 
     // Update language based on new extension
     syntax.setLanguageFromPath(path);
@@ -372,13 +412,9 @@ pub fn saveFileAs(path: []const u8) void {
     syntax.scheduleHighlight();
 }
 
-/// Update app state.modified.
+/// Mark buffer as modified when content changes.
 fn onBufferChanged(_: *gtk.TextBuffer, _: *gtk.TextBuffer) callconv(.c) void {
-    const state = app.state orelse return;
-    if (!state.modified) {
-        state.modified = true;
-        updateWindowTitle();
-    }
+    tabs.markModified();
     syntax.scheduleHighlight();
 }
 
@@ -516,19 +552,9 @@ fn handleSmartBackspace(buffer: *gtk.TextBuffer, tab_width: u8) bool {
     return true;
 }
 
-/// Update title when buffer changes or file is loaded.
+/// Update title - delegates to tabs module
 fn updateWindowTitle() void {
-    const state = app.state orelse return;
-
-    const base = if (state.current_file) |p| std.fs.path.basename(p) else "Untitled";
-
-    var buf: [256:0]u8 = undefined;
-    const title = if (state.modified)
-        (std.fmt.bufPrintZ(&buf, "Zinc IDE - {s} ●", .{base}) catch "Zinc IDE")
-    else
-        (std.fmt.bufPrintZ(&buf, "Zinc IDE - {s}", .{base}) catch "Zinc IDE");
-
-    state.setTitle(title);
+    // Title is now managed by tabs module
 }
 
 fn initLineHighlight(
@@ -712,8 +738,8 @@ fn applyTabWidth(view: *gtk.TextView, tab_width: u8, family: []const u8, size: u
     const char_width_px = @divTrunc(char_width_units + (pango_scale / 2), pango_scale);
     const tab_px = @as(c_int, tab_width) * char_width_px;
 
-    const tabs = pango.TabArray.new(1, 1);
-    defer pango.TabArray.free(tabs);
-    pango.TabArray.setTab(tabs, 0, pango.TabAlign.left, tab_px);
-    view.setTabs(tabs);
+    const tab_array = pango.TabArray.new(1, 1);
+    defer pango.TabArray.free(tab_array);
+    pango.TabArray.setTab(tab_array, 0, pango.TabAlign.left, tab_px);
+    view.setTabs(tab_array);
 }

@@ -57,6 +57,8 @@
 //! | P | Paste before |
 //! | x | Delete char |
 //! | r{c} | Replace char |
+//! | gt | Next tab |
+//! | gT | Previous tab |
 //! | : | Command mode |
 //! | [count] | Repeat count |
 //!
@@ -89,6 +91,7 @@ const command = @import("command.zig");
 const motions = @import("motions.zig");
 const operators = @import("operators.zig");
 const search = @import("search.zig");
+const tabs = @import("../tabs.zig");
 
 // Re-export for other modules
 pub const Motion = motions.Motion;
@@ -339,6 +342,16 @@ fn handleNormalMode(
         if (keyval == 'g') {
             motions.moveTo(buffer, .file_start, state.getCount());
             scrollToCursor(view, 0.0);
+            state.reset();
+            return true;
+        }
+        if (keyval == 't') {
+            tabs.nextTab();
+            state.reset();
+            return true;
+        }
+        if (keyval == 'T') {
+            tabs.prevTab();
             state.reset();
             return true;
         }
@@ -714,6 +727,16 @@ fn handleVisualMode(
         if (keyval == 'g') {
             motions.extendSelection(view, buffer, .file_start, 1);
             scrollToCursor(view, 0.0);
+            state.reset();
+            return true;
+        }
+        if (keyval == 't') {
+            tabs.nextTab();
+            state.reset();
+            return true;
+        }
+        if (keyval == 'T') {
+            tabs.prevTab();
             state.reset();
             return true;
         }

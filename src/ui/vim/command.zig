@@ -7,6 +7,8 @@ const gdk = @import("gdk4");
 const app = @import("../app.zig");
 const motions = @import("motions.zig");
 const root = @import("root.zig");
+const editor = @import("../editor/root.zig");
+const tabs = @import("../tabs.zig");
 
 /// Enter command mode
 pub fn enter(view: *gtk.TextView) void {
@@ -53,7 +55,6 @@ pub fn execute(view: *gtk.TextView, cmd: []const u8) void {
 
     // :w - save
     if (std.mem.eql(u8, trimmed, "w")) {
-        const editor = @import("../editor/root.zig");
         editor.saveCurrentFile();
         return;
     }
@@ -62,30 +63,50 @@ pub fn execute(view: *gtk.TextView, cmd: []const u8) void {
     if (std.mem.startsWith(u8, trimmed, "w ")) {
         const path = std.mem.trim(u8, trimmed[2..], " ");
         if (path.len > 0) {
-            const editor = @import("../editor/root.zig");
             editor.saveFileAs(path);
         }
         return;
     }
 
-    // :q - quit
+
+    // :q - close current tab (quit if last tab)
     if (std.mem.eql(u8, trimmed, "q")) {
-        const s = app.state orelse return;
-        s.window.as(gtk.Window).close();
+        if (tabs.closeCurrentTab()) {
+            const s = app.state orelse return;
+            s.window.as(gtk.Window).close();
+        }
         return;
     }
 
-    // :wq - save and quit
+    // :wq - save and close current tab
     if (std.mem.eql(u8, trimmed, "wq")) {
-        const editor = @import("../editor/root.zig");
         editor.saveCurrentFile();
+        if (tabs.closeCurrentTabForce()) {
+            const s = app.state orelse return;
+            s.window.as(gtk.Window).close();
+        }
+        return;
+    }
+
+    // :q! - force close current tab (no save check)
+    if (std.mem.eql(u8, trimmed, "q!")) {
+        if (tabs.closeCurrentTabForce()) {
+            const s = app.state orelse return;
+            s.force_quit = true;
+            s.window.as(gtk.Window).close();
+        }
+        return;
+    }
+
+    // :qa - quit all (close IDE)
+    if (std.mem.eql(u8, trimmed, "qa")) {
         const s = app.state orelse return;
         s.window.as(gtk.Window).close();
         return;
     }
 
-    // :q! - force quit (no save check)
-    if (std.mem.eql(u8, trimmed, "q!")) {
+    // :qa! - force quit all
+    if (std.mem.eql(u8, trimmed, "qa!")) {
         const s = app.state orelse return;
         s.force_quit = true;
         s.window.as(gtk.Window).close();
@@ -102,9 +123,14 @@ pub fn execute(view: *gtk.TextView, cmd: []const u8) void {
     if (trimmed.len > 2 and std.mem.startsWith(u8, trimmed, "e ")) {
         const path = std.mem.trim(u8, trimmed[2..], " ");
         if (path.len > 0) {
-            const editor = @import("../editor/root.zig");
             editor.loadFile(path);
         }
+        return;
+    }
+
+    // :n - new untitled buffer
+    if (std.mem.eql(u8, trimmed, "n")) {
+        tabs.newUntitled();
         return;
     }
 

@@ -8,6 +8,7 @@
 //! | Shortcut | Action | Description |
 //! |----------|--------|-------------|
 //! | Ctrl+S   | Save   | Save the current file to disk |
+//! | Ctrl+N   | New    | Create a new untitled file |
 //! | Ctrl+E   | Toggle Tree | Show/hide file tree (focuses tree when shown, editor when hidden) |
 //! | Ctrl+=   | Zoom In | Increase font size |
 //! | Ctrl+-   | Zoom Out | Decrease font size |
@@ -28,6 +29,7 @@ const app = @import("app.zig");
 const editor = @import("editor/root.zig");
 const file_tree = @import("file_tree.zig");
 const ai = @import("ai.zig");
+const tabs = @import("tabs.zig");
 
 /// Attach the key controller to the main window.
 /// Call this once during app initialization.
@@ -63,6 +65,12 @@ fn handleKeyPress(
         return 1;
     }
 
+    // Ctrl+N: New untitled file
+    if (modifiers.control_mask and ctrlKeyMatches(key, keyval, 'n')) {
+        tabs.newUntitled();
+        return 1;
+    }
+
     // Ctrl+E: Toggle file tree visibility
     if (modifiers.control_mask and ctrlKeyMatches(key, keyval, 'e')) {
         toggleFileTree();
@@ -84,6 +92,25 @@ fn handleKeyPress(
     // Ctrl+Alt+A: AI prompt
     if (modifiers.control_mask and modifiers.alt_mask and ctrlKeyMatches(key, keyval, 'a')) {
         ai.openPromptDialog();
+        return 1;
+    }
+
+    // Ctrl+Tab: Next tab
+    if (modifiers.control_mask and (keyval == gdk.KEY_Tab or keyval == gdk.KEY_ISO_Left_Tab)) {
+        if (modifiers.shift_mask) {
+            tabs.prevTab();
+        } else {
+            tabs.nextTab();
+        }
+        return 1;
+    }
+
+    // Ctrl+W: Close current tab
+    if (modifiers.control_mask and ctrlKeyMatches(key, keyval, 'w')) {
+        if (tabs.closeCurrentTab()) {
+            const s = app.state orelse return 0;
+            s.window.as(gtk.Window).close();
+        }
         return 1;
     }
 

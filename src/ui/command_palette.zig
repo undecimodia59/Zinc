@@ -31,6 +31,7 @@ const VimCommand = struct {
 
 // Available app commands
 const app_commands = [_]AppCommand{
+    .{ .label = "File: New", .action = cmdNewFile },
     .{ .label = "File: Save", .action = cmdSave },
     .{ .label = "File: Save As...", .action = cmdSaveAs },
     .{ .label = "File: Open File...", .action = cmdOpenFile },
@@ -44,6 +45,7 @@ const app_commands = [_]AppCommand{
 
 // Available vim commands (for ':' palette)
 const vim_commands = [_]VimCommand{
+    .{ .label = ":n - New file", .cmd = "n", .kind = .execute },
     .{ .label = ":w - Save", .cmd = "w", .kind = .execute },
     .{ .label = ":w {file} - Save As", .cmd = "w ", .kind = .template },
     .{ .label = ":q - Quit", .cmd = "q", .kind = .execute },
@@ -328,6 +330,7 @@ fn isVimCommand(text: []const u8) bool {
     if (t.len == 0) return false;
 
     // Direct matches
+    if (std.mem.eql(u8, t, "n")) return true;
     if (std.mem.eql(u8, t, "w")) return true;
     if (std.mem.eql(u8, t, "q")) return true;
     if (std.mem.eql(u8, t, "wq")) return true;
@@ -346,6 +349,11 @@ fn isVimCommand(text: []const u8) bool {
 
 fn cmdQuit(s: *app.AppState) void {
     s.window.as(gtk.Window).close();
+}
+
+fn cmdNewFile(_: *app.AppState) void {
+    const tabs = @import("tabs.zig");
+    tabs.newUntitled();
 }
 
 fn cmdSave(_: *app.AppState) void {
