@@ -57,6 +57,7 @@ pub const AppState = struct {
 
     // Added modified to fix leak on editor.getContent()
     modified: bool,
+    force_quit: bool, // Skip save confirmation (for :q!)
 
     gutter: *gtk.DrawingArea,
 
@@ -222,6 +223,7 @@ pub fn onActivate(app_ptr: *gtk.Application, user_data: *gtk.Application) callco
         .current_file = null,
         .file_tree_position = @intCast(app_config.ui.file_tree_width),
         .modified = false,
+        .force_quit = false,
         .gutter = editor_result.gutter,
     };
     state = app_state;
@@ -520,8 +522,8 @@ fn onCloseRequest(window: *gtk.Window, _: *gtk.Window) callconv(.c) c_int {
     const app_state = state orelse return 0;
     const cfg = app_state.config;
 
-    // Check for unsaved changes
-    if (app_state.modified and app_state.current_file != null) {
+    // Check for unsaved changes (skip if force_quit from :q!)
+    if (app_state.modified and app_state.current_file != null and !app_state.force_quit) {
         const dialog = gtk.MessageDialog.new(
             window,
             .{}, // Flags

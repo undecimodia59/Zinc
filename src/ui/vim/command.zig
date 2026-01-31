@@ -87,6 +87,7 @@ pub fn execute(view: *gtk.TextView, cmd: []const u8) void {
     // :q! - force quit (no save check)
     if (std.mem.eql(u8, trimmed, "q!")) {
         const s = app.state orelse return;
+        s.force_quit = true;
         s.window.as(gtk.Window).close();
         return;
     }

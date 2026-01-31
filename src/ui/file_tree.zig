@@ -318,11 +318,134 @@ pub fn openFolder(path: []const u8) void {
 }
 
 pub fn refreshDisplay() void {
-    const state = app.state orelse return;
-    const base_path = state.current_path orelse return;
+    const s = app.state orelse return;
+    const base_path = s.current_path orelse return;
 
-    state.tree_store.clear();
+    // Collect expanded paths before clearing
+    var expanded = std.StringHashMap(void).init(s.allocator);
+    defer {
+        var it = expanded.keyIterator();
+        while (it.next()) |key| s.allocator.free(key.*);
+        expanded.deinit();
+    }
+    collectExpandedPaths(s, &expanded, null);
+
+    s.tree_store.clear();
     populateTree(base_path, null, 0);
+
+    // Restore expanded paths
+    restoreExpandedPaths(s, &expanded, null);
+}
+
+fn collectExpandedPaths(s: *app.AppState, expanded: *std.StringHashMap(void), parent: ?*gtk.TreeIter) void {
+    var iter: gtk.TreeIter = undefined;
+    const model = s.tree_store.as(gtk.TreeModel);
+
+    const has_child = if (parent) |p|
+        model.iterChildren(&iter, p) != 0
+    else
+        model.iterChildren(&iter, null) != 0;
+
+    if (!has_child) return;
+
+    while (true) {
+        const path = model.getPath(&iter);
+        defer path.free();
+
+        if (s.file_tree.rowExpanded(path) != 0) {
+            // Build relative path for this row
+            if (buildRelativePath(s, &iter)) |rel_path| {
+                expanded.put(rel_path, {}) catch s.allocator.free(rel_path);
+            }
+            // Recurse into children
+            collectExpandedPaths(s, expanded, &iter);
+        }
+
+        if (model.iterNext(&iter) == 0) break;
+    }
+}
+
+fn restoreExpandedPaths(s: *app.AppState, expanded: *std.StringHashMap(void), parent: ?*gtk.TreeIter) void {
+    if (expanded.count() == 0) return;
+
+    var iter: gtk.TreeIter = undefined;
+    const model = s.tree_store.as(gtk.TreeModel);
+
+    const has_child = if (parent) |p|
+        model.iterChildren(&iter, p) != 0
+    else
+        model.iterChildren(&iter, null) != 0;
+
+    if (!has_child) return;
+
+    while (true) {
+        if (buildRelativePath(s, &iter)) |rel_path| {
+            defer s.allocator.free(rel_path);
+
+            if (expanded.contains(rel_path)) {
+                const path = model.getPath(&iter);
+                defer path.free();
+                _ = s.file_tree.expandRow(path, 0);
+                // Recurse to expand nested folders
+                restoreExpandedPaths(s, expanded, &iter);
+            }
+        }
+
+        if (model.iterNext(&iter) == 0) break;
+    }
+}
+
+fn buildRelativePath(s: *app.AppState, iter: *gtk.TreeIter) ?[]u8 {
+    const model = s.tree_store.as(gtk.TreeModel);
+
+    var parts: std.ArrayListUnmanaged([]const u8) = .empty;
+    defer {
+        for (parts.items) |p| s.allocator.free(p);
+        parts.deinit(s.allocator);
+    }
+
+    // Get current item's name
+    var value: gobject.Value = std.mem.zeroes(gobject.Value);
+    model.getValue(iter, 2, &value);
+    const name_ptr = value.getString() orelse {
+        value.unset();
+        return null;
+    };
+    const name = s.allocator.dupe(u8, std.mem.span(name_ptr)) catch {
+        value.unset();
+        return null;
+    };
+    value.unset();
+    parts.append(s.allocator, name) catch {
+        s.allocator.free(name);
+        return null;
+    };
+
+    // Walk up to root
+    var current = iter.*;
+    var parent: gtk.TreeIter = undefined;
+    while (model.iterParent(&parent, &current) != 0) {
+        current = parent;
+        var pval: gobject.Value = std.mem.zeroes(gobject.Value);
+        model.getValue(&current, 2, &pval);
+        const pname_ptr = pval.getString();
+        if (pname_ptr) |ptr| {
+            const pname = s.allocator.dupe(u8, std.mem.span(ptr)) catch {
+                pval.unset();
+                return null;
+            };
+            parts.append(s.allocator, pname) catch {
+                s.allocator.free(pname);
+                pval.unset();
+                return null;
+            };
+        }
+        pval.unset();
+    }
+
+    // Reverse and join
+    std.mem.reverse([]const u8, parts.items);
+    return std.mem.join(s.allocator, "/", parts.items) catch null;
 }
 
 const TreeEntry = struct {

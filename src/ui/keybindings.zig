@@ -141,7 +141,7 @@ fn toggleFileTree() void {
         return;
     }
 
-    // Show: refresh tree (pick up new files), restore child/position, focus file tree
+    // Show: refresh tree (picks up new files while preserving expanded state)
     file_tree.refreshDisplay();
     paned.setStartChild(state.file_tree_scroll.as(gtk.Widget));
     if (state.file_tree_position <= 0) {
