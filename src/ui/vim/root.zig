@@ -375,7 +375,11 @@ fn handleNormalMode(
     // Movement keys
     switch (keyval) {
         'h', gdk.KEY_Left => {
-            motions.move(buffer, .left, state.getCount());
+            if (state.pending_operator != .none) {
+                operators.operatorMotion(view, buffer, .left, state.getCount());
+            } else {
+                motions.move(buffer, .left, state.getCount());
+            }
             scrollToCursor(view, 0.5);
             state.reset();
             return true;
@@ -393,7 +397,11 @@ fn handleNormalMode(
             return true;
         },
         'l', gdk.KEY_Right => {
-            motions.move(buffer, .right, state.getCount());
+            if (state.pending_operator != .none) {
+                operators.operatorMotion(view, buffer, .right, state.getCount());
+            } else {
+                motions.move(buffer, .right, state.getCount());
+            }
             scrollToCursor(view, 0.5);
             state.reset();
             return true;
@@ -855,6 +863,10 @@ fn handleVisualMode(
             state.reset();
             return true;
         },
+        'p' => {
+            operators.pasteOverSelection(view, buffer);
+            return true;
+        },
 
         else => {
             return false;
@@ -948,14 +960,11 @@ fn applyCursorStyle(view: *gtk.TextView) void {
     // We target .zinc-editor to match the class added in editor/root.zig.
     // We set min-width on the cursor node to force it to be a block.
     const css =
-        \\ .zinc-editor {
-        \\   -GtkWidget-cursor-aspect-ratio: 1.0;
-        \\ }
         \\ .zinc-editor text > cursor {
         \\   background-color: #f1be16;
         \\   color: #000000;
-        \\   min-width: 1ch;  /* Force width to 1 character width */
-        \\   min-height: 1em; /* Ensure height covers the line */
+        \\   min-width: 0.6em;
+        \\   min-height: 1em;
         \\ }
     ;
 

@@ -20,6 +20,8 @@ const FieldKind = enum {
     string_list,
     line_number_mode,
     theme_preset,
+    ai_provider,
+    hidden,
 };
 
 const FieldMeta = struct {
@@ -45,6 +47,9 @@ const SettingsState = struct {
     theme_names: std.ArrayList([]const u8),
     apply_fn: ApplyFn,
     apply_ctx: ?*anyopaque,
+    ai_enabled_switch: ?*gtk.Switch = null,
+    ai_provider_label: ?*gtk.Widget = null,
+    ai_provider_widget: ?*gtk.Widget = null,
 
     pub fn deinit(self: *SettingsState) void {
         self.bindings.deinit(self.allocator);
@@ -92,6 +97,10 @@ pub fn show(parent: *gtk.ApplicationWindow, cfg: *config.Config, apply_fn: Apply
     scroll.setChild(content.as(gtk.Widget));
 
     addStructSection("Editor", "editor", &cfg.editor, allocator, content, &state.bindings) catch {
+        state.deinit();
+        return;
+    };
+    addAiSection(state, content) catch {
         state.deinit();
         return;
     };
@@ -170,7 +179,9 @@ fn applyBindings(state: *SettingsState) void {
             .color => applyColor(binding),
             .string_list => applyStringList(binding, state.cfg),
             .line_number_mode => applyLineNumberMode(binding),
+            .ai_provider => applyAiProvider(binding, state.cfg),
             .theme_preset => {}, // Already handled above
+            .hidden => {},
         }
     }
 }
@@ -225,6 +236,23 @@ fn applyLineNumberMode(binding: Binding) void {
     const target: *config.LineNumberMode = castBinding(*config.LineNumberMode, binding.target);
     const active = combo.as(gtk.ComboBox).getActive();
     target.* = if (active == 0) .absolute else .relative;
+}
+
+fn applyAiProvider(binding: Binding, cfg: *config.Config) void {
+    const combo: *gtk.ComboBoxText = castBinding(*gtk.ComboBoxText, binding.widget);
+    const target: *[]const u8 = castBinding(*[]const u8, binding.target);
+    const active = combo.as(gtk.ComboBox).getActive();
+    if (active < 0) return;
+
+    const name = switch (active) {
+        0 => "gemini",
+        1 => "codex",
+        2 => "claude",
+        else => "gemini",
+    };
+    const duped = cfg.allocator.dupe(u8, name) catch return;
+    cfg.allocator.free(target.*);
+    target.* = duped;
 }
 
 fn applyThemePreset(binding: Binding, state: *SettingsState) void {
@@ -290,16 +318,18 @@ fn addStructSection(
     inline for (fields) |field| {
         const field_path = path_prefix ++ "." ++ field.name;
         const meta = getFieldMeta(field_path);
-        const label_text = meta.label;
-        const field_ptr = &@field(struct_ptr.*, field.name);
+        if (meta.kind != .hidden) {
+            const label_text = meta.label;
+            const field_ptr = &@field(struct_ptr.*, field.name);
 
-        const label = makeLabel(allocator, label_text);
-        label.as(gtk.Widget).setHalign(gtk.Align.start);
-        label.as(gtk.Widget).setValign(gtk.Align.center);
-        grid.attach(label.as(gtk.Widget), 0, row, 1, 1);
+            const label = makeLabel(allocator, label_text);
+            label.as(gtk.Widget).setHalign(gtk.Align.start);
+            label.as(gtk.Widget).setValign(gtk.Align.center);
+            grid.attach(label.as(gtk.Widget), 0, row, 1, 1);
 
-        try addFieldWidget(field_path, field.type, field_ptr, allocator, grid, row, bindings);
-        row += 1;
+            try addFieldWidget(field_path, field.type, field_ptr, allocator, grid, row, bindings);
+            row += 1;
+        }
     }
 }
 
@@ -325,6 +355,24 @@ fn addFieldWidget(
         return;
     }
 
+    const meta = getFieldMeta(field_path);
+
+    if (field_type == []const u8 and meta.kind == .ai_provider) {
+        const combo = gtk.ComboBoxText.new();
+        combo.appendText("Gemini");
+        combo.appendText("Codex");
+        combo.appendText("Claude");
+        combo.as(gtk.ComboBox).setActive(providerIndex(field_ptr.*));
+        combo.as(gtk.Widget).setHexpand(1);
+        grid.attach(combo.as(gtk.Widget), 1, row, 1, 1);
+        try bindings.append(allocator, .{
+            .widget = @ptrCast(combo),
+            .target = @ptrCast(field_ptr),
+            .kind = .ai_provider,
+        });
+        return;
+    }
+
     if (field_type == []const u8) {
         const entry = gtk.Entry.new();
         setEntryText(allocator, entry, field_ptr.*);
@@ -337,8 +385,6 @@ fn addFieldWidget(
         });
         return;
     }
-
-    const meta = getFieldMeta(field_path);
 
     if (field_type == config.LineNumberMode) {
         const combo = gtk.ComboBoxText.new();
@@ -391,6 +437,88 @@ fn addFieldWidget(
         });
         return;
     }
+}
+
+fn addAiSection(state: *SettingsState, parent: *gtk.Box) !void {
+    const allocator = state.allocator;
+    const cfg = state.cfg;
+
+    const frame = makeFrame(allocator, "AI");
+    const grid = gtk.Grid.new();
+    grid.setRowSpacing(8);
+    grid.setColumnSpacing(12);
+    grid.as(gtk.Widget).setMarginStart(12);
+    grid.as(gtk.Widget).setMarginEnd(12);
+    grid.as(gtk.Widget).setMarginTop(12);
+    grid.as(gtk.Widget).setMarginBottom(12);
+    frame.setChild(grid.as(gtk.Widget));
+    parent.append(frame.as(gtk.Widget));
+
+    const enabled_label = makeLabel(allocator, "Enable AI");
+    enabled_label.as(gtk.Widget).setHalign(gtk.Align.start);
+    enabled_label.as(gtk.Widget).setValign(gtk.Align.center);
+    grid.attach(enabled_label.as(gtk.Widget), 0, 0, 1, 1);
+
+    const enabled_sw = gtk.Switch.new();
+    enabled_sw.setActive(if (cfg.editor.ai_enabled) 1 else 0);
+    enabled_sw.as(gtk.Widget).setHalign(gtk.Align.start);
+    grid.attach(enabled_sw.as(gtk.Widget), 1, 0, 1, 1);
+
+    state.ai_enabled_switch = enabled_sw;
+    try state.bindings.append(allocator, .{
+        .widget = @ptrCast(enabled_sw),
+        .target = @ptrCast(&cfg.editor.ai_enabled),
+        .kind = .boolean,
+    });
+
+    const provider_label = makeLabel(allocator, "Provider");
+    provider_label.as(gtk.Widget).setHalign(gtk.Align.start);
+    provider_label.as(gtk.Widget).setValign(gtk.Align.center);
+    grid.attach(provider_label.as(gtk.Widget), 0, 1, 1, 1);
+
+    const combo = gtk.ComboBoxText.new();
+    combo.appendText("Gemini");
+    combo.appendText("Codex");
+    combo.appendText("Claude");
+    combo.as(gtk.ComboBox).setActive(providerIndex(cfg.editor.ai_provider));
+    combo.as(gtk.Widget).setHexpand(1);
+    grid.attach(combo.as(gtk.Widget), 1, 1, 1, 1);
+
+    state.ai_provider_label = provider_label.as(gtk.Widget);
+    state.ai_provider_widget = combo.as(gtk.Widget);
+
+    try state.bindings.append(allocator, .{
+        .widget = @ptrCast(combo),
+        .target = @ptrCast(&cfg.editor.ai_provider),
+        .kind = .ai_provider,
+    });
+
+    updateAiProviderVisibility(state, cfg.editor.ai_enabled);
+    _ = gtk.Switch.signals.state_set.connect(
+        enabled_sw,
+        *SettingsState,
+        &onAiEnabledToggled,
+        state,
+        .{},
+    );
+}
+
+fn onAiEnabledToggled(_: *gtk.Switch, _: c_int, state: *SettingsState) callconv(.c) c_int {
+    const enabled = state.ai_enabled_switch.?.getActive() != 0;
+    updateAiProviderVisibility(state, enabled);
+    return 0;
+}
+
+fn updateAiProviderVisibility(state: *SettingsState, enabled: bool) void {
+    if (state.ai_provider_label) |w| w.setVisible(@intFromBool(enabled));
+    if (state.ai_provider_widget) |w| w.setVisible(@intFromBool(enabled));
+}
+
+fn providerIndex(name: []const u8) c_int {
+    if (std.mem.eql(u8, name, "gemini")) return 0;
+    if (std.mem.eql(u8, name, "codex")) return 1;
+    if (std.mem.eql(u8, name, "claude")) return 2;
+    return 0;
 }
 
 fn addThemePresetSelector(
@@ -570,6 +698,9 @@ const field_meta = [_]FieldMeta{
     .{ .path = "editor.auto_save", .label = "Auto save", .kind = .boolean },
     .{ .path = "editor.auto_save_interval_ms", .label = "Auto save interval (ms)", .kind = .int_u32, .min = 1000, .max = 600000, .step = 1000 },
     .{ .path = "editor.vim_mode", .label = "Vim mode", .kind = .boolean },
+    .{ .path = "editor.completion_enabled", .label = "Completion", .kind = .boolean },
+    .{ .path = "editor.ai_enabled", .label = "AI enabled", .kind = .hidden },
+    .{ .path = "editor.ai_provider", .label = "AI provider", .kind = .hidden },
 
     .{ .path = "theme.name", .label = "Theme name", .kind = .string },
     .{ .path = "theme.background", .label = "Background", .kind = .color },

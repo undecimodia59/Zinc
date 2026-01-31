@@ -1,4 +1,4 @@
-# Zinc - Development Roadmap (v 0.2.3)
+# Zinc - Development Roadmap (v 0.3.1)
 
 A lightweight, fast text editor with IDE features. Inspired by Atom, Sublime Text, and Vim.
 
@@ -70,7 +70,7 @@ A lightweight, fast text editor with IDE features. Inspired by Atom, Sublime Tex
 
 ### Syntax Highlighting
 - [x] Modular tokenizer-based highlighting core
-- [ ] Language support:
+- [x] Language support:
   - [x] Zig (priority)
   - [x] C/C++
   - [x] Rust
@@ -91,7 +91,7 @@ A lightweight, fast text editor with IDE features. Inspired by Atom, Sublime Tex
 - [x] Gruvbox theme
 - [x] Nord theme
 - [x] One Dark theme
-- [ ] Theme file format for custom themes
+- [x] Theme file format for custom themes
 
 ### UI Polish
 - [ ] Minimap (code overview sidebar)
@@ -146,10 +146,17 @@ A lightweight, fast text editor with IDE features. Inspired by Atom, Sublime Tex
 - [ ] Format document
 
 ### Built-in Intelligence (no LSP needed)
-- [ ] Basic word completion from current file
+- [x] Basic word completion from current file
 - [ ] Bracket auto-close
 - [ ] Quote auto-close
 - [ ] Auto-indent based on brackets
+
+### AI Integration
+- [x] AI provider abstraction (Gemini, Codex, Claude)
+- [x] AI prompt dialog (`Ctrl+Alt+A`)
+- [x] Selection-aware (rewrite selected code or generate new)
+- [x] Threaded execution with visual feedback
+- [x] Enable/disable and provider selection in settings
 
 ---
 

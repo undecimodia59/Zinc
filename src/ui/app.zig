@@ -47,6 +47,8 @@ pub const AppState = struct {
     code_scroll: *gtk.ScrolledWindow,
     config: *config.Config,
     line_highlight: *gtk.DrawingArea,
+    ai_overlay_box: *gtk.Box,
+    ai_overlay_label: *gtk.Label,
 
     // Runtime state
     current_path: ?[]const u8,
@@ -62,6 +64,7 @@ pub const AppState = struct {
         if (self.current_path) |p| self.allocator.free(p);
         if (self.current_file) |f| self.allocator.free(f);
         self.file_tree_scroll.as(gobject.Object).unref();
+        editor.deinit();
         self.config.deinit();
         self.allocator.destroy(self.config);
         self.allocator.destroy(self);
@@ -213,6 +216,8 @@ pub fn onActivate(app_ptr: *gtk.Application, user_data: *gtk.Application) callco
         .code_scroll = editor_result.scroll,
         .config = app_config,
         .line_highlight = editor_result.line_highlight,
+        .ai_overlay_box = editor_result.ai_overlay_box,
+        .ai_overlay_label = editor_result.ai_overlay_label,
         .current_path = null,
         .current_file = null,
         .file_tree_position = @intCast(app_config.ui.file_tree_width),
@@ -474,10 +479,17 @@ fn onFileSelected(
 pub fn openPath(path: []const u8) void {
     const app_state = state orelse return;
 
-    const stat = std.fs.cwd().statFile(path) catch |err| {
-        std.debug.print("Error accessing path: {}\n", .{err});
-        app_state.setStatus("Error: Cannot access path");
-        return;
+    const stat = std.fs.cwd().statFile(path) catch |err| switch (err) {
+        error.FileNotFound => {
+            // Treat missing files as new buffers to be created on save.
+            editor.loadOrCreateFile(path);
+            return;
+        },
+        else => {
+            std.debug.print("Error accessing path: {}\n", .{err});
+            app_state.setStatus("Error: Cannot access path");
+            return;
+        },
     };
 
     switch (stat.kind) {

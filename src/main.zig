@@ -10,8 +10,15 @@ const gobject = @import("gobject");
 const ui_app = @import("ui/app.zig");
 
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
+    var gpa = std.heap.GeneralPurposeAllocator(.{
+        .stack_trace_frames = 12,
+    }){};
+    defer {
+        const check = gpa.deinit();
+        if (check == .leak) {
+            std.debug.print("GPA: leak detected\n", .{});
+        }
+    }
     const alloc = gpa.allocator();
 
     // Set the global allocator for the app module

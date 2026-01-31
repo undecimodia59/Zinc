@@ -12,13 +12,17 @@ Inspired by Atom, Sublime Text, and Vim.
 - **Theming** - 6 built-in themes + custom theme support
 - **Configurable** - JSON configuration with sensible defaults
 - **Modern UI** - Clean GTK4 interface with current line highlighting
-- **Syntax highlighting** - Zig, Panther, Python, Go, and Markdown
+- **Command palette** - Quick access to commands with `Ctrl+Shift+P`
+- **Syntax highlighting** - 15 languages including Zig, Rust, Go, Python, JavaScript, C/C++, HTML, CSS, JSON, YAML, TOML, Markdown, Shell, and more
+- **Relative line numbers** - Vim-style relative or absolute line numbering
+- **AI integration** - Built-in support for AI providers (Gemini, Codex, Claude)
+- **Autocompletion** - Word completion with popup suggestions
 
 ## Building
 
 ### Prerequisites
 
-- Zig 0.14.0 or later
+- Zig 0.15.2 or later
 - GTK4 development libraries
 
 On Fedora:
@@ -104,6 +108,9 @@ zig build install --prefix "$HOME/.local"
 | `Ctrl+-` | Decrease font size |
 | `Ctrl+Z` | Undo |
 | `Ctrl+Shift+Z` | Redo |
+| `Ctrl+E` | Toggle file tree |
+| `Ctrl+Shift+P` | Command palette |
+| `Ctrl+Alt+A` | Open AI prompt dialog |
 
 ## Vim Mode
 
@@ -206,6 +213,30 @@ Vim mode is disabled by default. Enable it in settings or set `"vim_mode": true`
 | `:q!` | Force quit (discard changes) |
 | `:e <file>` | Open file |
 | `:!<cmd>` | Run shell command (output in popup) |
+
+---
+
+## AI Integration
+
+Zinc supports AI-assisted coding through external CLI providers. Enable AI in settings and configure your preferred provider.
+
+### Supported Providers
+
+| Provider | CLI Tool Required |
+|----------|-------------------|
+| Gemini | `gemini` |
+| Codex | `codex` |
+| Claude | `claude` |
+
+### Usage
+
+1. Enable AI in settings (`Ctrl+,`)
+2. Select your preferred provider
+3. Press `Ctrl+Alt+A` to open the AI prompt dialog
+
+AI can:
+- Rewrite selected code based on your prompt
+- Generate new code at cursor position
 
 ---
 

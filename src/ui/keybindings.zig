@@ -27,6 +27,7 @@ const gdk = @import("gdk4");
 const app = @import("app.zig");
 const editor = @import("editor/root.zig");
 const file_tree = @import("file_tree.zig");
+const ai = @import("ai.zig");
 
 /// Attach the key controller to the main window.
 /// Call this once during app initialization.
@@ -77,6 +78,12 @@ fn handleKeyPress(
     // Ctrl+-: Decrease font size
     if (modifiers.control_mask and (key == '-' or keyval == 0xffad)) {
         changeFontSize(-1);
+        return 1;
+    }
+
+    // Ctrl+Alt+A: AI prompt
+    if (modifiers.control_mask and modifiers.alt_mask and ctrlKeyMatches(key, keyval, 'a')) {
+        ai.openPromptDialog();
         return 1;
     }
 

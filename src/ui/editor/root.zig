@@ -9,6 +9,7 @@ const app = @import("../app.zig");
 const gutter = @import("gutter.zig");
 const io = @import("io.zig");
 const static = @import("static.zig");
+const completion = @import("completion.zig");
 const vim = @import("../vim/root.zig");
 const config = @import("../../utils/config.zig");
 const color_utils = @import("../../utils/color.zig");
@@ -31,6 +32,9 @@ pub const EditorResult = struct {
     text_view: *gtk.TextView,
     gutter: *gtk.DrawingArea,
     line_highlight: *gtk.DrawingArea,
+    completion_layer: *gtk.Fixed,
+    ai_overlay_box: *gtk.Box,
+    ai_overlay_label: *gtk.Label,
 };
 
 /// Create the editor widget.
@@ -105,8 +109,33 @@ pub fn create(cfg: *const config.Config) EditorResult {
     overlay.as(gtk.Widget).setVexpand(1);
     overlay.setChild(code_scroll.as(gtk.Widget));
     overlay.addOverlay(line_highlight.as(gtk.Widget));
-    overlay.setMeasureOverlay(line_highlight.as(gtk.Widget), 1);
+    overlay.setMeasureOverlay(line_highlight.as(gtk.Widget), 0);
     overlay.setClipOverlay(line_highlight.as(gtk.Widget), 0);
+
+    const completion_layer = gtk.Fixed.new();
+    completion_layer.as(gtk.Widget).setHexpand(1);
+    completion_layer.as(gtk.Widget).setVexpand(1);
+    completion_layer.as(gtk.Widget).setCanTarget(0);
+    completion_layer.as(gtk.Widget).setCanFocus(0);
+    overlay.addOverlay(completion_layer.as(gtk.Widget));
+    overlay.setMeasureOverlay(completion_layer.as(gtk.Widget), 0);
+    overlay.setClipOverlay(completion_layer.as(gtk.Widget), 0);
+
+    const ai_overlay_box = gtk.Box.new(gtk.Orientation.vertical, 0);
+    ai_overlay_box.as(gtk.Widget).setHalign(gtk.Align.center);
+    ai_overlay_box.as(gtk.Widget).setValign(gtk.Align.start);
+    ai_overlay_box.as(gtk.Widget).setMarginTop(10);
+    ai_overlay_box.as(gtk.Widget).setVisible(0);
+
+    const ai_overlay_label = gtk.Label.new("AI running...");
+    ai_overlay_label.as(gtk.Widget).addCssClass("zinc-ai-overlay-label");
+    ai_overlay_box.append(ai_overlay_label.as(gtk.Widget));
+
+    overlay.addOverlay(ai_overlay_box.as(gtk.Widget));
+    overlay.setMeasureOverlay(ai_overlay_box.as(gtk.Widget), 0);
+    overlay.setClipOverlay(ai_overlay_box.as(gtk.Widget), 0);
+
+    completion.init(code_view, completion_layer, cfg);
 
     initLineHighlight(line_highlight, code_view, code_scroll);
     line_highlight.as(gtk.Widget).setVisible(@intFromBool(cfg.editor.highlight_current_line));
@@ -123,21 +152,78 @@ pub fn create(cfg: *const config.Config) EditorResult {
         .text_view = code_view,
         .gutter = line_gutter,
         .line_highlight = line_highlight,
+        .completion_layer = completion_layer,
+        .ai_overlay_box = ai_overlay_box,
+        .ai_overlay_label = ai_overlay_label,
     };
+}
+
+pub fn deinit() void {
+    completion.deinit();
+    syntax.deinit();
 }
 
 /// Load a file into the editor.
 pub fn loadFile(path: []const u8) void {
+    loadOrCreateFile(path);
+}
+
+/// Load file if it exists; otherwise open a blank buffer and set the path for save.
+pub fn loadOrCreateFile(path: []const u8) void {
     const state = app.state orelse return;
 
-    const content = io.readUtf8File(state.allocator, path, io.max_file_size) catch |err| {
-        std.debug.print("Error reading file: {}\n", .{err});
-        switch (err) {
-            error.FileTooLarge => state.setStatus("Error: File too large"),
-            error.InvalidUtf8 => state.setStatus("Error: File is not valid UTF-8"),
-            else => state.setStatus("Error: Cannot read file"),
-        }
-        return;
+    const content = io.readUtf8File(state.allocator, path, io.max_file_size) catch |err| switch (err) {
+        error.FileTooLarge => {
+            state.setStatus("Error: File too large");
+            return;
+        },
+        error.InvalidUtf8 => {
+            state.setStatus("Error: File is not valid UTF-8");
+            return;
+        },
+        error.FileNotFound => {
+            const buffer = state.code_view.getBuffer();
+            buffer.setText("", 0);
+
+            syntax.setLanguageFromPath(path);
+
+            var start_iter: gtk.TextIter = undefined;
+            buffer.getStartIter(&start_iter);
+            buffer.placeCursor(&start_iter);
+            state.code_view.scrollToMark(buffer.getInsert(), 0.0, 1, 0.0, 0.0);
+
+            if (state.current_file) |f| state.allocator.free(f);
+            state.current_file = state.allocator.dupe(u8, path) catch null;
+
+            state.modified = false;
+            updateWindowTitle();
+
+            if (state.config.editor.show_line_numbers) {
+                gutter.setWidthForView(state.code_view, state.gutter, state.config);
+                gutter.queueRedrawSoon();
+            }
+
+            _ = state.code_view.as(gtk.Widget).grabFocus();
+            if (vim_mode_enabled) {
+                vim.init(state.code_view);
+            }
+
+            var status_buf: [512:0]u8 = undefined;
+            const status = std.fmt.bufPrintZ(
+                &status_buf,
+                "New file: {s}",
+                .{ std.fs.path.basename(path) },
+            ) catch "New file";
+            state.setStatus(status);
+
+            syntax.scheduleHighlight();
+            return;
+        },
+        else => {
+            std.debug.print("Error reading file: {}\n", .{err});
+            state.setStatus("Error: Cannot read file");
+            return;
+        },
     };
     defer state.allocator.free(content);
 
@@ -145,7 +231,6 @@ pub fn loadFile(path: []const u8) void {
 
     syntax.setLanguageFromPath(path);
 
-    // GTK expects a null-terminated string.
     const content_z = state.allocator.allocSentinel(u8, content.len, 0) catch {
         state.setStatus("Error: Out of memory");
         return;
@@ -155,12 +240,10 @@ pub fn loadFile(path: []const u8) void {
 
     buffer.setText(@ptrCast(content_z.ptr), @intCast(content.len));
 
-    // Move cursor to beginning of file
     var start_iter: gtk.TextIter = undefined;
     buffer.getStartIter(&start_iter);
     buffer.placeCursor(&start_iter);
 
-    // Scroll to top
     state.code_view.scrollToMark(buffer.getInsert(), 0.0, 1, 0.0, 0.0);
 
     if (state.current_file) |f| state.allocator.free(f);
@@ -174,10 +257,7 @@ pub fn loadFile(path: []const u8) void {
         gutter.queueRedrawSoon();
     }
 
-    // Grab focus to the editor
     _ = state.code_view.as(gtk.Widget).grabFocus();
-
-    // Re-initialize vim mode if enabled to ensure proper state
     if (vim_mode_enabled) {
         vim.init(state.code_view);
     }
@@ -223,6 +303,7 @@ pub fn applyConfig(cfg: *const config.Config) void {
     const state = app.state orelse return;
     applyEditorConfig(state.code_view, state.gutter, cfg);
     syntax.applyTheme(cfg);
+    completion.applyConfig(cfg);
     state.line_highlight.as(gtk.Widget).setVisible(@intFromBool(cfg.editor.highlight_current_line));
     // Redraw line highlight to pick up new theme color
     if (cfg.editor.highlight_current_line) {
@@ -325,6 +406,10 @@ fn onEditorKeyPress(
         if (vim.state.mode != .insert and !has_ctrl_or_alt) {
             return 1; // Block other keys in normal/visual mode
         }
+    }
+
+    if (completion.handleKeyPress(keyval, modifiers)) {
+        return 1;
     }
 
     // Tab key (GDK_KEY_Tab = 0xff09): insert spaces if use_spaces is enabled

@@ -194,17 +194,29 @@ pub fn copyToClipboard(view: *gtk.TextView, buffer: *gtk.TextBuffer, start: *gtk
     clipboard.setText(text);
 }
 
-// Track paste mode for async callback (p vs P)
+// Track paste mode for async callback (p vs P) and whether to replace selection
 var paste_before: bool = false;
+var paste_replace_selection: bool = false;
 
 /// Paste from clipboard
 pub fn paste(view: *gtk.TextView, buffer: *gtk.TextBuffer, before: bool) void {
     _ = buffer;
     paste_before = before;
+    paste_replace_selection = false;
     const display = view.as(gtk.Widget).getDisplay();
     const clipboard = display.getClipboard();
 
     // Request clipboard content asynchronously
+    clipboard.readTextAsync(null, &onClipboardRead, view);
+}
+
+/// Paste over current selection (visual mode p)
+pub fn pasteOverSelection(view: *gtk.TextView, buffer: *gtk.TextBuffer) void {
+    _ = buffer;
+    paste_before = true;
+    paste_replace_selection = true;
+    const display = view.as(gtk.Widget).getDisplay();
+    const clipboard = display.getClipboard();
     clipboard.readTextAsync(null, &onClipboardRead, view);
 }
 
@@ -234,7 +246,14 @@ fn onClipboardRead(
     // Temporarily enable editing for paste
     view.setEditable(1);
 
-    if (!paste_before) {
+    if (paste_replace_selection) {
+        var start: gtk.TextIter = undefined;
+        var end: gtk.TextIter = undefined;
+        if (buffer.getSelectionBounds(&start, &end) != 0) {
+            buffer.delete(&start, &end);
+            buffer.placeCursor(&start);
+        }
+    } else if (!paste_before) {
         // p: paste after cursor - move cursor forward first
         var iter: gtk.TextIter = undefined;
         buffer.getIterAtMark(&iter, buffer.getInsert());
@@ -246,6 +265,11 @@ fn onClipboardRead(
 
     buffer.insertAtCursor(text, -1);
     view.setEditable(was_editable);
+
+    if (paste_replace_selection) {
+        root.enterNormalMode(view);
+        root.state.reset();
+    }
 }
 
 /// Open new line below and enter insert mode

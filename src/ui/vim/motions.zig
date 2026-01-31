@@ -138,6 +138,13 @@ pub fn extendSelection(view: *gtk.TextView, buffer: *gtk.TextBuffer, motion: Mot
             _ = anchor.forwardToLineEnd();
             _ = anchor.forwardChar();
         }
+    } else {
+        // Inclusive visual selection (like Vim)
+        if (anchor.compare(&cursor) <= 0) {
+            _ = cursor.forwardChar();
+        } else {
+            _ = anchor.forwardChar();
+        }
     }
 
     // selectRange(a, b) puts INSERT at a, SELECTION_BOUND at b

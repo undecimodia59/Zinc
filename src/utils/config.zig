@@ -30,6 +30,9 @@ pub const EditorConfig = struct {
     auto_save: bool = false,
     auto_save_interval_ms: u32 = 30000,
     vim_mode: bool = false,
+    completion_enabled: bool = true,
+    ai_enabled: bool = false,
+    ai_provider: []const u8 = "gemini",
 };
 
 /// Theme configuration
@@ -279,12 +282,14 @@ pub const Config = struct {
             .recent_folders = .{},
         };
         cfg.editor.font_family = allocator.dupe(u8, cfg.editor.font_family) catch unreachable;
+        cfg.editor.ai_provider = allocator.dupe(u8, cfg.editor.ai_provider) catch unreachable;
         cfg.theme.name = allocator.dupe(u8, cfg.theme.name) catch unreachable;
         return cfg;
     }
 
     pub fn deinit(self: *Config) void {
         self.allocator.free(self.editor.font_family);
+        self.allocator.free(self.editor.ai_provider);
         self.allocator.free(self.theme.name);
         for (self.recent_files.items) |path| {
             self.allocator.free(path);
@@ -437,6 +442,9 @@ const EditorConfigFile = struct {
     auto_save: ?bool = null,
     auto_save_interval_ms: ?u32 = null,
     vim_mode: ?bool = null,
+    completion_enabled: ?bool = null,
+    ai_enabled: ?bool = null,
+    ai_provider: ?[]const u8 = null,
 };
 
 const ThemeConfigFile = struct {
@@ -491,6 +499,9 @@ fn applyConfigFile(self: *Config, parsed: ConfigFile) !bool {
         if (e.auto_save) |v| self.editor.auto_save = v;
         if (e.auto_save_interval_ms) |v| self.editor.auto_save_interval_ms = v;
         if (e.vim_mode) |v| self.editor.vim_mode = v;
+        if (e.completion_enabled) |v| self.editor.completion_enabled = v;
+        if (e.ai_enabled) |v| self.editor.ai_enabled = v;
+        if (e.ai_provider) |v| try replaceString(self, &self.editor.ai_provider, v);
     }
 
     if (parsed.theme) |t| {
@@ -819,7 +830,12 @@ fn writeConfigJsonc(self: *const Config, writer: anytype) !void {
     try writer.print("    \"auto_indent\": {s},\n", .{boolString(self.editor.auto_indent)});
     try writer.print("    \"auto_save\": {s},\n", .{boolString(self.editor.auto_save)});
     try writer.print("    \"auto_save_interval_ms\": {d},\n", .{self.editor.auto_save_interval_ms});
-    try writer.print("    \"vim_mode\": {s}\n", .{boolString(self.editor.vim_mode)});
+    try writer.print("    \"vim_mode\": {s},\n", .{boolString(self.editor.vim_mode)});
+    try writer.print("    \"completion_enabled\": {s},\n", .{boolString(self.editor.completion_enabled)});
+    try writer.print("    \"ai_enabled\": {s},\n", .{boolString(self.editor.ai_enabled)});
+    try writer.writeAll("    \"ai_provider\": ");
+    try writeJsonString(writer, self.editor.ai_provider);
+    try writer.writeAll("\n");
     try writer.writeAll("  },\n\n");
 
     try writer.writeAll("  // Theme settings\n");
