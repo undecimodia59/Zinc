@@ -3,12 +3,16 @@ const gtk = @import("gtk");
 const gdk = @import("gdk4");
 const gio = @import("gio");
 const gobject = @import("gobject");
+const glib = @import("glib");
 
 const file_tree = @import("file_tree.zig");
 const editor = @import("editor/root.zig");
 const settings = @import("settings.zig");
 const keybindings = @import("keybindings.zig");
 const config = @import("../utils/config.zig");
+const buffer_mod = @import("../core/buffer.zig");
+const tabs = @import("tabs.zig");
+const command_palette = @import("command_palette.zig");
 
 const Allocator = std.mem.Allocator;
 
@@ -27,9 +31,6 @@ pub fn allocator() Allocator {
 pub fn setAllocator(alloc: Allocator) void {
     global_allocator = alloc;
 }
-
-const buffer_mod = @import("../core/buffer.zig");
-const tabs = @import("tabs.zig");
 
 /// Application state containing all UI components and runtime data
 pub const AppState = struct {
@@ -262,7 +263,6 @@ pub fn onActivate(app_ptr: *gtk.Application, user_data: *gtk.Application) callco
 
     // Ensure paned position applies after widgets are realized.
     {
-        const glib = @import("glib");
         const width: c_int = @intCast(app_config.ui.file_tree_width);
         _ = glib.idleAddFull(
             glib.PRIORITY_DEFAULT_IDLE,
@@ -357,7 +357,6 @@ fn onFolderSelected(
     res: *gio.AsyncResult,
     _: ?*anyopaque,
 ) callconv(.c) void {
-    const glib = @import("glib");
     const dialog: *gtk.FileDialog = @ptrCast(source_object orelse return);
 
     var err: ?*glib.Error = null;
@@ -394,7 +393,6 @@ pub fn onOpenFileClicked(btn: *gtk.Button, _: *gtk.Button) callconv(.c) void {
 }
 
 pub fn showCommandPalette(vim_mode: bool) void {
-    const command_palette = @import("command_palette.zig");
     const app_state = state orelse return;
     command_palette.show(app_state.window.as(gtk.Window), if (vim_mode) .vim else .app);
 }
@@ -436,7 +434,6 @@ fn onSaveAsSelected(
     res: *gio.AsyncResult,
     _: ?*anyopaque,
 ) callconv(.c) void {
-    const glib = @import("glib");
     const dialog: *gtk.FileDialog = @ptrCast(source_object orelse return);
 
     var err: ?*glib.Error = null;
@@ -466,7 +463,6 @@ fn onFileSelected(
     res: *gio.AsyncResult,
     _: ?*anyopaque,
 ) callconv(.c) void {
-    const glib = @import("glib");
     const dialog: *gtk.FileDialog = @ptrCast(source_object orelse return);
 
     var err: ?*glib.Error = null;

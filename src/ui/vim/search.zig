@@ -3,6 +3,7 @@
 const std = @import("std");
 const gtk = @import("gtk");
 const gdk = @import("gdk4");
+const glib = @import("glib");
 
 const app = @import("../app.zig");
 const root = @import("root.zig");
@@ -188,7 +189,6 @@ pub fn searchWordUnderCursor(buffer: *gtk.TextBuffer, forward: bool) bool {
     const text = buffer.getText(&word_start, &word_end, 0);
     const word = std.mem.span(text);
     defer {
-        const glib = @import("glib");
         glib.free(@ptrCast(text));
     }
 

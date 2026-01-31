@@ -4,6 +4,7 @@ const gdk = @import("gdk4");
 const gobject = @import("gobject");
 
 const app = @import("app.zig");
+const editor = @import("editor/root.zig");
 const buffer_mod = @import("../core/buffer.zig");
 const Buffer = buffer_mod.Buffer;
 const BufferManager = buffer_mod.BufferManager;
@@ -231,7 +232,6 @@ fn onSaveDialogResponse(dialog: *gtk.Dialog, response_id: c_int, s: *app.AppStat
     switch (response) {
         .yes => {
             // Save then close
-            const editor = @import("editor/root.zig");
             editor.saveCurrentFile();
             _ = doCloseCurrentTab(s);
         },
@@ -269,7 +269,6 @@ pub fn saveCurrentBufferState(s: *app.AppState) void {
 pub fn loadActiveBuffer(s: *app.AppState) void {
     const buf = s.buffers.getActive() orelse return;
 
-    const editor = @import("editor/root.zig");
 
     if (buf.path) |path| {
         // Load file content

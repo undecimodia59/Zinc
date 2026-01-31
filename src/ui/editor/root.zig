@@ -4,6 +4,7 @@ const cairo = @import("cairo1");
 const gdk = @import("gdk4");
 const gobject = @import("gobject");
 const pango = @import("pango1");
+const glib = @import("glib");
 
 const app = @import("../app.zig");
 const gutter = @import("gutter.zig");
@@ -14,6 +15,7 @@ const vim = @import("../vim/root.zig");
 const config = @import("../../utils/config.zig");
 const color_utils = @import("../../utils/color.zig");
 const syntax = @import("../../core/syntax/root.zig");
+const tabs = @import("../tabs.zig");
 
 const current_line_alpha: f64 = 0.35;
 const pango_scale: c_int = 1024;
@@ -162,8 +164,6 @@ pub fn deinit() void {
     completion.deinit();
     syntax.deinit();
 }
-
-const tabs = @import("../tabs.zig");
 
 /// Load a file into the editor (creates new buffer/tab)
 pub fn loadFile(path: []const u8) void {
@@ -319,7 +319,6 @@ pub fn getContent(allocator: std.mem.Allocator) ?[]u8 {
 
     const c_text = buffer.getText(&start_iter, &end_iter, 0);
     defer {
-        const glib = @import("glib");
         glib.free(@ptrCast(c_text));
     }
 
@@ -501,7 +500,6 @@ fn handleAutoIndent(buffer: *gtk.TextBuffer) void {
     // Extract the indentation
     const indent_ptr = buffer.getText(&line_start, &ws_end, 0);
     defer {
-        const glib = @import("glib");
         glib.free(@ptrCast(indent_ptr));
     }
     const indent = std.mem.span(indent_ptr);

@@ -3,6 +3,7 @@ const gtk = @import("gtk");
 const cairo = @import("cairo1");
 const gdk = @import("gdk4");
 const pango = @import("pango1");
+const glib = @import("glib");
 
 const app = @import("../app.zig");
 const config = @import("../../utils/config.zig");
@@ -56,7 +57,6 @@ pub fn init(gutter: *gtk.DrawingArea, view: *gtk.TextView, scroll: *gtk.Scrolled
 }
 
 pub fn queueRedrawSoon() void {
-    const glib = @import("glib");
     const s = app.state orelse return;
 
     // Run after GTK finishes layout/size allocation for the newly set text.

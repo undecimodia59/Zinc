@@ -19,6 +19,38 @@ pub const Operator = enum {
     change,
 };
 
+/// Apply operator to an explicit range [start, end)
+pub fn operatorRange(view: *gtk.TextView, buffer: *gtk.TextBuffer, start: *gtk.TextIter, end: *gtk.TextIter) void {
+    var s = start.*;
+    var e = end.*;
+
+    if (s.compare(&e) > 0) {
+        const tmp = s;
+        s = e;
+        e = tmp;
+    }
+
+    const op = root.state.pending_operator;
+    root.state.pending_operator = .none;
+
+    switch (op) {
+        .delete => {
+            copyToClipboard(view, buffer, &s, &e);
+            buffer.delete(&s, &e);
+        },
+        .yank => {
+            copyToClipboard(view, buffer, &s, &e);
+            buffer.placeCursor(&s);
+        },
+        .change => {
+            copyToClipboard(view, buffer, &s, &e);
+            buffer.delete(&s, &e);
+            root.enterInsertMode(view);
+        },
+        .none => {},
+    }
+}
+
 /// Apply operator with motion
 pub fn operatorMotion(view: *gtk.TextView, buffer: *gtk.TextBuffer, motion: motions.Motion, count: u32) void {
     var start: gtk.TextIter = undefined;

@@ -85,6 +85,7 @@ const std = @import("std");
 const gtk = @import("gtk");
 const gdk = @import("gdk4");
 const gobject = @import("gobject");
+const glib = @import("glib");
 
 const app = @import("../app.zig");
 const command = @import("command.zig");
@@ -231,7 +232,6 @@ const ScrollRequest = struct {
 };
 
 pub fn scrollToCursor(view: *gtk.TextView, yalign: f64) void {
-    const glib = @import("glib");
     pending_scroll = .{ .view = view, .yalign = yalign };
     if (scroll_idle_active) return;
     scroll_idle_active = true;
@@ -315,6 +315,9 @@ fn handleNormalMode(
             state.last_find_char = char;
             state.last_find_type = find_type;
 
+            var start: gtk.TextIter = undefined;
+            buffer.getIterAtMark(&start, buffer.getInsert());
+
             const found = switch (find_type) {
                 .f => motions.findCharForward(buffer, char, state.getCount(), false),
                 .t => motions.findCharForward(buffer, char, state.getCount(), true),
@@ -322,7 +325,30 @@ fn handleNormalMode(
                 .T => motions.findCharBackward(buffer, char, state.getCount(), true),
                 .none => false,
             };
-            _ = found;
+
+            if (!found) {
+                state.reset();
+                return true;
+            }
+
+            if (state.pending_operator != .none) {
+                var end: gtk.TextIter = undefined;
+                buffer.getIterAtMark(&end, buffer.getInsert());
+
+                // Build inclusive range between start and end.
+                if (start.compare(&end) > 0) {
+                    const tmp = start;
+                    start = end;
+                    end = tmp;
+                }
+                _ = end.forwardChar();
+
+                operators.operatorRange(view, buffer, &start, &end);
+                scrollToCursor(view, 0.5);
+                state.reset();
+                return true;
+            }
+
             scrollToCursor(view, 0.5);
             state.reset();
             return true;
@@ -954,7 +980,6 @@ fn updateCursor(view: *gtk.TextView) void {
 
     // 2. Schedule a single high-priority refresh
     // This ensures that even if GTK was busy, the visual update is forced.
-    const glib = @import("glib");
     _ = glib.idleAddFull(
         glib.PRIORITY_HIGH_IDLE,
         struct {

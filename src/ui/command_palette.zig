@@ -6,6 +6,7 @@ const gobject = @import("gobject");
 const app = @import("app.zig");
 const editor = @import("editor/root.zig");
 const vim_cmd = @import("vim/command.zig");
+const tabs = @import("tabs.zig");
 
 const PaletteMode = enum {
     app,
@@ -46,12 +47,14 @@ const app_commands = [_]AppCommand{
 // Available vim commands (for ':' palette)
 const vim_commands = [_]VimCommand{
     .{ .label = ":n - New file", .cmd = "n", .kind = .execute },
+    .{ .label = ":e {file} - Open File", .cmd = "e ", .kind = .template },
     .{ .label = ":w - Save", .cmd = "w", .kind = .execute },
     .{ .label = ":w {file} - Save As", .cmd = "w ", .kind = .template },
     .{ .label = ":q - Quit", .cmd = "q", .kind = .execute },
     .{ .label = ":wq - Save and Quit", .cmd = "wq", .kind = .execute },
     .{ .label = ":q! - Quit (no save)", .cmd = "q!", .kind = .execute },
-    .{ .label = ":e {file} - Open File", .cmd = "e ", .kind = .template },
+    .{ .label = ":qa - Quit All", .cmd = "qa", .kind = .execute },
+    .{ .label = ":qa! - Quit All (no save)", .cmd = "qa!", .kind = .execute },
     .{ .label = ":!{cmd} - Shell Command", .cmd = "!", .kind = .template },
     .{ .label = ":{line} - Go to Line", .cmd = "", .kind = .template },
 };
@@ -335,6 +338,8 @@ fn isVimCommand(text: []const u8) bool {
     if (std.mem.eql(u8, t, "q")) return true;
     if (std.mem.eql(u8, t, "wq")) return true;
     if (std.mem.eql(u8, t, "q!")) return true;
+    if (std.mem.eql(u8, t, "qa")) return true;
+    if (std.mem.eql(u8, t, "qa!")) return true;
 
     // Prefixes
     if (std.mem.startsWith(u8, t, "!")) return true;
@@ -352,7 +357,6 @@ fn cmdQuit(s: *app.AppState) void {
 }
 
 fn cmdNewFile(_: *app.AppState) void {
-    const tabs = @import("tabs.zig");
     tabs.newUntitled();
 }
 
