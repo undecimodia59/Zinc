@@ -7,6 +7,7 @@ const gobject = @import("gobject");
 const app = @import("../app.zig");
 const config = @import("../../utils/config.zig");
 const vim = @import("../vim/root.zig");
+const core = @import("../../core/completion.zig");
 
 const Allocator = std.mem.Allocator;
 
@@ -18,12 +19,6 @@ const POPUP_PADDING: c_int = 8;
 const ROW_PADDING_V: c_int = 4;
 const CHAR_WIDTH_ESTIMATE: c_int = 8;
 
-const CompletionItem = struct {
-    text: []u8,
-    count: u32,
-    last_offset: i32,
-};
-
 const CompletionState = struct {
     allocator: Allocator,
     view: *gtk.TextView,
@@ -32,8 +27,8 @@ const CompletionState = struct {
     popup_box: *gtk.Box,
     scroll: *gtk.ScrolledWindow,
     list_box: *gtk.ListBox,
-    items: std.ArrayList(CompletionItem),
-    matches: std.ArrayList(usize),
+    completer: core.BufferCompleter, // Core completion logic
+    matches: std.ArrayListUnmanaged(core.CompletionItem), // Current filtered matches
     enabled: bool,
     visible: bool,
     applying: bool,
@@ -44,9 +39,9 @@ const CompletionState = struct {
     locked_x: ?f64, // X position locked during cycling to prevent jumping
 
     fn deinit(self: *CompletionState) void {
-        clearItems(self);
-        self.items.deinit(self.allocator);
+        self.completer.deinit();
         self.matches.deinit(self.allocator);
+        if (self.cycle_prefix) |p| self.allocator.free(p);
         self.allocator.destroy(self);
     }
 };
@@ -100,8 +95,8 @@ pub fn init(view: *gtk.TextView, fixed: *gtk.Fixed, cfg: *const config.Config) v
         .popup_box = popup_box,
         .scroll = scroll,
         .list_box = list_box,
-        .items = .{},
-        .matches = .{},
+        .completer = core.BufferCompleter.init(allocator),
+        .matches = .empty,
         .enabled = cfg.editor.completion_enabled,
         .visible = false,
         .applying = false,
@@ -162,8 +157,7 @@ pub fn applyConfig(cfg: *const config.Config) void {
 pub fn deinit() void {
     const st = state orelse return;
     state = null;
-    clearItems(st);
-    st.items.deinit(st.allocator);
+    st.completer.deinit();
     st.matches.deinit(st.allocator);
     if (st.cycle_prefix) |p| {
         st.allocator.free(p);
@@ -255,10 +249,8 @@ fn onRowSelected(_: *gtk.ListBox, row: ?*gtk.ListBoxRow, st: *CompletionState) c
 }
 
 fn rebuildIndex(st: *CompletionState) void {
-    clearItems(st);
-
-    // TODO: Add LSP support here when language server is available.
-    // For now, use buffer-based completion.
+    // TODO: When LSP is available, skip buffer completion if LSP provides completions
+    // For now, use buffer-based completion from core module
 
     const buffer = st.buffer;
     var start: gtk.TextIter = undefined;
@@ -268,40 +260,7 @@ fn rebuildIndex(st: *CompletionState) void {
     defer glib.free(@ptrCast(text_ptr));
 
     const text = std.mem.span(text_ptr);
-    var map = std.StringHashMap(usize).init(st.allocator);
-    defer map.deinit();
-
-    var i: usize = 0;
-    while (i < text.len) {
-        if (!isIdentStart(text[i])) {
-            i += 1;
-            continue;
-        }
-
-        const start_idx = i;
-        i += 1;
-        while (i < text.len and isIdentChar(text[i])) : (i += 1) {}
-
-        const token = text[start_idx..i];
-        if (token.len == 0) continue;
-
-        if (map.get(token)) |idx| {
-            st.items.items[idx].count += 1;
-            st.items.items[idx].last_offset = @intCast(start_idx);
-        } else {
-            const copy = st.allocator.dupe(u8, token) catch continue;
-            const item = CompletionItem{
-                .text = copy,
-                .count = 1,
-                .last_offset = @intCast(start_idx),
-            };
-            st.items.append(st.allocator, item) catch {
-                st.allocator.free(copy);
-                continue;
-            };
-            _ = map.put(copy, st.items.items.len - 1) catch {};
-        }
-    }
+    st.completer.indexText(text);
 }
 
 fn updatePopup(st: *CompletionState) void {
@@ -325,7 +284,7 @@ fn updatePopup(st: *CompletionState) void {
     };
     defer glib.free(@constCast(live_prefix.ptr));
 
-    if (live_prefix.len == 0 or !isIdentStart(live_prefix[0])) {
+    if (live_prefix.len == 0 or !core.isIdentStart(live_prefix[0])) {
         hidePopup(st);
         return;
     }
@@ -349,7 +308,7 @@ fn getPrefix(st: *CompletionState, out_start: *gtk.TextIter, out_cursor: *gtk.Te
 
     while (start_iter.backwardChar() != 0) {
         const c = start_iter.getChar();
-        if (!isIdentCharUnicode(c)) {
+        if (!core.isIdentCharUnicode(c)) {
             _ = start_iter.forwardChar();
             break;
         }
@@ -361,49 +320,18 @@ fn getPrefix(st: *CompletionState, out_start: *gtk.TextIter, out_cursor: *gtk.Te
 }
 
 fn buildMatches(st: *CompletionState, prefix: []const u8, cursor_offset: i32) void {
-    st.matches.clearRetainingCapacity();
-
-    for (st.items.items, 0..) |item, idx| {
-        if (std.mem.startsWith(u8, item.text, prefix)) {
-            st.matches.append(st.allocator, idx) catch {};
-        }
-    }
-
-    const sorter = struct {
-        items: []const CompletionItem,
-        cursor: i32,
-        prefix: []const u8,
-        fn lessThan(ctx: @This(), a_idx: usize, b_idx: usize) bool {
-            const a = ctx.items[a_idx];
-            const b = ctx.items[b_idx];
-            _ = ctx.prefix;
-
-            const a_dist = absDiff(ctx.cursor, a.last_offset);
-            const b_dist = absDiff(ctx.cursor, b.last_offset);
-            if (a_dist != b_dist) return a_dist < b_dist;
-            if (a.count != b.count) return a.count > b.count;
-            return std.mem.lessThan(u8, a.text, b.text);
-        }
-    };
-
-    std.mem.sort(
-        usize,
-        st.matches.items,
-        sorter{ .items = st.items.items, .cursor = cursor_offset, .prefix = prefix },
-        sorter.lessThan,
-    );
+    st.completer.getCompletions(prefix, @intCast(@max(0, cursor_offset)), &st.matches, st.allocator, MAX_SUGGESTIONS);
 }
 
 fn rebuildListBox(st: *CompletionState) void {
     clearListBox(st);
 
-    const count = @min(st.matches.items.len, MAX_SUGGESTIONS);
+    const count = st.matches.items.len;
     var max_len: usize = 0;
-    var i: usize = 0;
-    while (i < count) : (i += 1) {
-        const item = st.items.items[st.matches.items[i]];
-        if (item.text.len > max_len) max_len = item.text.len;
-        const label_text = st.allocator.dupeZ(u8, item.text) catch continue;
+
+    for (st.matches.items) |item| {
+        if (item.label.len > max_len) max_len = item.label.len;
+        const label_text = st.allocator.dupeZ(u8, item.label) catch continue;
         defer st.allocator.free(label_text);
         const label = gtk.Label.new(label_text.ptr);
         label.as(gtk.Widget).setHalign(gtk.Align.start);
@@ -521,7 +449,7 @@ fn applyCompletionItem(st: *CompletionState, keep_open: bool) void {
     const index = row.getIndex();
     if (index < 0 or @as(usize, @intCast(index)) >= st.matches.items.len) return;
 
-    const item = st.items.items[st.matches.items[@intCast(index)]];
+    const item = st.matches.items[@intCast(index)];
 
     var prefix_start: gtk.TextIter = undefined;
     var cursor: gtk.TextIter = undefined;
@@ -540,13 +468,13 @@ fn applyCompletionItem(st: *CompletionState, keep_open: bool) void {
 
     st.applying = true;
     st.buffer.delete(&prefix_start, &cursor);
-    const insert_z = st.allocator.dupeZ(u8, item.text) catch {
+    const insert_z = st.allocator.dupeZ(u8, item.label) catch {
         st.applying = false;
         if (!keep_open) hidePopup(st);
         return;
     };
     defer st.allocator.free(insert_z);
-    st.buffer.insertAtCursor(insert_z.ptr, @intCast(item.text.len));
+    st.buffer.insertAtCursor(insert_z.ptr, @intCast(item.label.len));
     st.applying = false;
 
     rebuildIndex(st);
@@ -653,12 +581,6 @@ fn hidePopup(st: *CompletionState) void {
     }
 }
 
-fn clearItems(st: *CompletionState) void {
-    for (st.items.items) |item| {
-        st.allocator.free(item.text);
-    }
-    st.items.clearRetainingCapacity();
-}
 
 fn applyTheme(st: *CompletionState, cfg: *const config.Config) void {
     const display = gdk.Display.getDefault() orelse return;
@@ -714,22 +636,6 @@ fn applyTheme(st: *CompletionState, cfg: *const config.Config) void {
     );
 }
 
-fn isIdentStart(c: u8) bool {
-    return (c >= 'A' and c <= 'Z') or (c >= 'a' and c <= 'z') or c == '_';
-}
-
-fn isIdentChar(c: u8) bool {
-    return isIdentStart(c) or (c >= '0' and c <= '9');
-}
-
-fn isIdentCharUnicode(c: u32) bool {
-    if (c > 0x7f) return false;
-    return isIdentChar(@intCast(c));
-}
-
-fn absDiff(a: i32, b: i32) i32 {
-    return if (a >= b) a - b else b - a;
-}
 
 fn mixColor(a: u32, b: u32, t: f64) u32 {
     const ar: f64 = @floatFromInt((a >> 16) & 0xff);

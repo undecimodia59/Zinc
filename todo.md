@@ -96,7 +96,7 @@ A lightweight, fast text editor with IDE features. Inspired by Atom, Sublime Tex
 ### UI Polish
 - [ ] Minimap (code overview sidebar)
 - [ ] Smooth scrolling
-- [ ] Cursor blink animation
+- [x] Cursor blink animation
 - [ ] Indent guides (vertical lines)
 - [ ] Git diff indicators in gutter (+, -, ~)
 
