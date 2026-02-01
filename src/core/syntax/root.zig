@@ -91,7 +91,14 @@ pub fn deinit() void {
 }
 
 pub fn setLanguageFromPath(path: []const u8) void {
-    const ext = std.fs.path.extension(path);
+    var ext = std.fs.path.extension(path);
+    if (std.mem.eql(u8, ext, "")) {
+        const basename = std.fs.path.basename(path);
+        if (std.mem.startsWith(u8, basename, ".")) {
+            ext = basename;
+        }
+    }
+
     state.language = languageForExtension(ext);
     if (state.language == null) {
         const buffer = state.buffer orelse return;

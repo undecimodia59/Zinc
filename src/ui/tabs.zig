@@ -66,6 +66,7 @@ pub const TabBar = struct {
     }
 
     fn createTab(self: *TabBar, buf: *const Buffer, index: usize, active: bool) *gtk.Widget {
+        _ = self;
         const btn = gtk.Button.new();
         btn.as(gtk.Widget).addCssClass("zinc-tab");
         if (active) {
@@ -88,25 +89,19 @@ pub const TabBar = struct {
         label.as(gtk.Widget).setHalign(gtk.Align.center);
         btn.setChild(label.as(gtk.Widget));
 
-        // Store index in button for click handler
-        // Use user data through allocator
-        const ctx = self.allocator.create(TabClickContext) catch return btn.as(gtk.Widget);
-        ctx.* = .{ .index = index, .allocator = self.allocator };
-
-        _ = gtk.Button.signals.clicked.connect(btn, *TabClickContext, &onTabClicked, ctx, .{});
+        // Store index on the button to avoid heap allocation
+        _ = btn.as(gobject.Object).setData("tab_index", @ptrFromInt(index));
+        _ = gtk.Button.signals.clicked.connect(btn, ?*anyopaque, &onTabClicked, null, .{});
 
         return btn.as(gtk.Widget);
     }
 };
 
-const TabClickContext = struct {
-    index: usize,
-    allocator: std.mem.Allocator,
-};
-
-fn onTabClicked(_: *gtk.Button, ctx: *TabClickContext) callconv(.c) void {
+fn onTabClicked(button: *gtk.Button, _: ?*anyopaque) callconv(.c) void {
     const s = app.state orelse return;
-    switchToTab(s, ctx.index);
+    const idx_ptr = button.as(gobject.Object).getData("tab_index") orelse return;
+    const index: usize = @intFromPtr(idx_ptr);
+    switchToTab(s, index);
 }
 
 /// Switch to a specific tab index

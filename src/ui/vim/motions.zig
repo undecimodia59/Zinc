@@ -141,7 +141,14 @@ pub fn extendSelection(view: *gtk.TextView, buffer: *gtk.TextBuffer, motion: Mot
     }
 
     // selectRange(a, b) puts INSERT at a, SELECTION_BOUND at b
-    // We want INSERT at cursor (moving end) so cursor follows motion
+    // Keep INSERT at cursor (moving end) and make right bound inclusive.
+    if (root.state.mode != .visual_line and anchor.compare(&cursor) > 0) {
+        var inclusive_anchor = anchor;
+        if (inclusive_anchor.forwardChar() != 0) {
+            buffer.selectRange(&cursor, &inclusive_anchor);
+            return;
+        }
+    }
     buffer.selectRange(&cursor, &anchor);
 }
 
