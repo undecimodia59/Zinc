@@ -29,6 +29,7 @@ const special_keywords = [_][]const u8{
 const builtin_types = [_][]const u8{
     "int", "double", "num", "String", "bool", "List", "Map", "Set", "Object", "dynamic", "void",
     "Never", "Future", "Stream", "Iterable", "DateTime", "RegExp", "Uri", "Duration", "Symbol", "BigInt",
+    "Widget", "BuildContext", "Theme", "ThemeData", "IconData", "Icons",
 };
 
 fn isKeyword(word: []const u8) bool {
@@ -284,6 +285,25 @@ pub fn tokenize(allocator: std.mem.Allocator, source: []const u8) ![]Token {
             continue;
         }
 
+        // Annotations like @override
+        if (c == '@') {
+            const s_line = line;
+            const s_col = col;
+            i += 1;
+            col += 1;
+            if (i < source.len and isAsciiIdentStart(source[i])) {
+                i += 1;
+                col += 1;
+                while (i < source.len and isAsciiIdentContinue(source[i])) {
+                    i += 1;
+                    col += 1;
+                }
+                try addToken(allocator, &tokens, .attribute, s_line, s_col, line, col);
+                continue;
+            }
+            continue;
+        }
+
         // Identifiers
         if (isAsciiIdentStart(c)) {
             const s_line = line;
@@ -296,6 +316,13 @@ pub fn tokenize(allocator: std.mem.Allocator, source: []const u8) ![]Token {
                 col += 1;
             }
             const word = source[start..i];
+
+            // Highlight named arguments / map keys like `identifier:`.
+            if (i < source.len and source[i] == ':' and !isKeyword(word)) {
+                try addToken(allocator, &tokens, .field, s_line, s_col, line, col);
+                continue;
+            }
+
             if (isKeyword(word)) {
                 try addToken(allocator, &tokens, .keyword, s_line, s_col, line, col);
                 if (std.mem.eql(u8, word, "class") or std.mem.eql(u8, word, "enum") or std.mem.eql(u8, word, "mixin") or std.mem.eql(u8, word, "extension") or std.mem.eql(u8, word, "typedef")) {
