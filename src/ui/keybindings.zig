@@ -30,6 +30,7 @@ const editor = @import("editor/root.zig");
 const file_tree = @import("file_tree.zig");
 const ai = @import("ai.zig");
 const tabs = @import("tabs.zig");
+const terminal = @import("terminal.zig");
 
 /// Attach the key controller to the main window.
 /// Call this once during app initialization.
@@ -111,6 +112,12 @@ fn handleKeyPress(
             const s = app.state orelse return 0;
             s.window.as(gtk.Window).close();
         }
+        return 1;
+    }
+
+    // Ctrl+`: Toggle terminal
+    if (modifiers.control_mask and (keyval == '`' or keyval == gdk.KEY_grave)) {
+        terminal.toggle();
         return 1;
     }
 

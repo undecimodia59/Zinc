@@ -9,6 +9,7 @@ const motions = @import("motions.zig");
 const root = @import("root.zig");
 const editor = @import("../editor/root.zig");
 const tabs = @import("../tabs.zig");
+const terminal = @import("../terminal.zig");
 
 /// Enter command mode
 pub fn enter(view: *gtk.TextView) void {
@@ -131,6 +132,12 @@ pub fn execute(view: *gtk.TextView, cmd: []const u8) void {
     // :n - new untitled buffer
     if (std.mem.eql(u8, trimmed, "n")) {
         tabs.newUntitled();
+        return;
+    }
+
+    // :term or :terminal - open terminal
+    if (std.mem.eql(u8, trimmed, "term") or std.mem.eql(u8, trimmed, "terminal")) {
+        terminal.show();
         return;
     }
 

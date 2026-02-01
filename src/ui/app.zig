@@ -13,6 +13,7 @@ const config = @import("../utils/config.zig");
 const buffer_mod = @import("../core/buffer.zig");
 const tabs = @import("tabs.zig");
 const command_palette = @import("command_palette.zig");
+const terminal = @import("terminal.zig");
 
 const Allocator = std.mem.Allocator;
 
@@ -39,6 +40,7 @@ pub const AppState = struct {
     header_bar: *gtk.HeaderBar,
     title_label: *gtk.Label,
     paned: *gtk.Paned,
+    terminal_paned: *gtk.Paned,
     statusbar: *gtk.Statusbar,
 
     // File tree components
@@ -66,6 +68,7 @@ pub const AppState = struct {
     gutter: *gtk.DrawingArea,
 
     pub fn deinit(self: *AppState) void {
+        terminal.deinit();
         if (self.current_path) |p| self.allocator.free(p);
         self.buffers.deinit();
         self.file_tree_scroll.as(gobject.Object).unref();
@@ -196,7 +199,17 @@ pub fn onActivate(app_ptr: *gtk.Application, user_data: *gtk.Application) callco
     const editor_result = editor.create(app_config);
     paned.setEndChild(editor_result.root.as(gtk.Widget));
 
-    main_box.append(paned.as(gtk.Widget));
+    // Create vertical paned for terminal (wraps the file tree/editor paned)
+    const terminal_paned = gtk.Paned.new(gtk.Orientation.vertical);
+    terminal_paned.as(gtk.Widget).setVexpand(1);
+    terminal_paned.setStartChild(paned.as(gtk.Widget));
+    // End child (terminal) will be added lazily when terminal is first opened
+    terminal_paned.setShrinkStartChild(0);
+    terminal_paned.setShrinkEndChild(0);
+    terminal_paned.setResizeStartChild(1);
+    terminal_paned.setResizeEndChild(0);
+
+    main_box.append(terminal_paned.as(gtk.Widget));
 
     // Create statusbar
     const statusbar = gtk.Statusbar.new();
@@ -214,6 +227,7 @@ pub fn onActivate(app_ptr: *gtk.Application, user_data: *gtk.Application) callco
         .header_bar = header_result.header_bar,
         .title_label = title_label,
         .paned = paned,
+        .terminal_paned = terminal_paned,
         .statusbar = statusbar,
         .file_tree = tree_result.tree_view,
         .tree_store = tree_result.tree_store,

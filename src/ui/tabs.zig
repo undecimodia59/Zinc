@@ -176,6 +176,9 @@ pub fn closeCurrentTabForce() bool {
 }
 
 fn doCloseCurrentTab(s: *app.AppState) bool {
+    if (s.buffers.getBuffers().len == 0) {
+        return true;
+    }
     const should_quit = s.buffers.closeActive();
 
     if (should_quit) {

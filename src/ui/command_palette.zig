@@ -7,6 +7,7 @@ const app = @import("app.zig");
 const editor = @import("editor/root.zig");
 const vim_cmd = @import("vim/command.zig");
 const tabs = @import("tabs.zig");
+const terminal = @import("terminal.zig");
 
 const PaletteMode = enum {
     app,
@@ -42,6 +43,7 @@ const app_commands = [_]AppCommand{
     .{ .label = "View: Toggle Line Numbers", .action = cmdToggleLineNumbers },
     .{ .label = "View: Zoom In", .action = cmdZoomIn },
     .{ .label = "View: Zoom Out", .action = cmdZoomOut },
+    .{ .label = "Terminal: Toggle", .action = cmdToggleTerminal },
 };
 
 // Available vim commands (for ':' palette)
@@ -412,4 +414,8 @@ fn cmdZoomOut(s: *app.AppState) void {
         s.config.editor.font_size -= 1;
         editor.applyConfig(s.config);
     }
+}
+
+fn cmdToggleTerminal(_: *app.AppState) void {
+    terminal.toggle();
 }
