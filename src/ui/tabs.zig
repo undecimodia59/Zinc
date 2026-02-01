@@ -90,7 +90,8 @@ pub const TabBar = struct {
         btn.setChild(label.as(gtk.Widget));
 
         // Store index on the button to avoid heap allocation
-        _ = btn.as(gobject.Object).setData("tab_index", @ptrFromInt(index));
+        // Add 1 to avoid null pointer when index is 0
+        _ = btn.as(gobject.Object).setData("tab_index", @ptrFromInt(index + 1));
         _ = gtk.Button.signals.clicked.connect(btn, ?*anyopaque, &onTabClicked, null, .{});
 
         return btn.as(gtk.Widget);
@@ -100,7 +101,8 @@ pub const TabBar = struct {
 fn onTabClicked(button: *gtk.Button, _: ?*anyopaque) callconv(.c) void {
     const s = app.state orelse return;
     const idx_ptr = button.as(gobject.Object).getData("tab_index") orelse return;
-    const index: usize = @intFromPtr(idx_ptr);
+    // Subtract 1 since we stored index + 1 to avoid null pointer
+    const index: usize = @intFromPtr(idx_ptr) - 1;
     switchToTab(s, index);
 }
 
