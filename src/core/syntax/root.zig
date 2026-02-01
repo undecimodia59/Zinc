@@ -23,6 +23,7 @@ const toml_lang = @import("languages/toml.zig");
 const html_lang = @import("languages/html.zig");
 const css_lang = @import("languages/css.zig");
 const shell_lang = @import("languages/shell.zig");
+const dart_lang = @import("languages/dart.zig");
 
 const Token = types.Token;
 const TokenType = types.TokenType;
@@ -66,6 +67,7 @@ const languages = [_]Language{
     html_lang.language,
     css_lang.language,
     shell_lang.language,
+    dart_lang.language,
 };
 
 const State = struct {

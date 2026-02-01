@@ -8,7 +8,7 @@ const TokenType = types.TokenType;
 
 pub const language = types.Language{
     .name = "shell",
-    .extensions = &.{ ".sh", ".bash", ".zsh" },
+    .extensions = &.{ ".sh", ".bash", ".zsh", ".bashrc" },
     .tokenize = tokenize,
 };
 
