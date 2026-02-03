@@ -248,6 +248,7 @@ fn onSaveDialogResponse(dialog: *gtk.Dialog, response_id: c_int, s: *app.AppStat
 /// Save current buffer state (cursor, scroll position)
 pub fn saveCurrentBufferState(s: *app.AppState) void {
     const buf = s.buffers.getActive() orelse return;
+    const alloc = s.allocator;
 
     // Get cursor position
     var cursor_iter: gtk.TextIter = undefined;
@@ -263,14 +264,20 @@ pub fn saveCurrentBufferState(s: *app.AppState) void {
     var top_iter: gtk.TextIter = undefined;
     _ = s.code_view.getIterAtLocation(&top_iter, visible.f_x, visible.f_y);
     buf.scroll_top = @intCast(@max(0, top_iter.getLine()));
+
+    if (editor.getContent(alloc)) |content| {
+        if (buf.content) |old| alloc.free(old);
+        buf.content = content;
+    }
 }
 
 /// Load active buffer into editor
 pub fn loadActiveBuffer(s: *app.AppState) void {
     const buf = s.buffers.getActive() orelse return;
 
-
-    if (buf.path) |path| {
+    if (buf.content) |content| {
+        editor.loadFromContent(content, buf.path, buf.modified);
+    } else if (buf.path) |path| {
         // Load file content
         editor.loadFileInternal(path, false); // false = don't create new buffer
     } else {

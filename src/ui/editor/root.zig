@@ -333,6 +333,47 @@ pub fn clear() void {
     buffer.setText("", 0);
 }
 
+/// Load editor content from memory without touching disk.
+pub fn loadFromContent(content: []const u8, path: ?[]const u8, modified: bool) void {
+    const state = app.state orelse return;
+    const buffer = state.code_view.getBuffer();
+
+    const lang_path = path orelse "";
+    syntax.setLanguageFromPath(lang_path);
+
+    const content_z = state.allocator.allocSentinel(u8, content.len, 0) catch {
+        state.setStatus("Error: Out of memory");
+        return;
+    };
+    defer state.allocator.free(content_z);
+    @memcpy(content_z, content);
+
+    buffer.setText(@ptrCast(content_z.ptr), @intCast(content.len));
+
+    var start_iter: gtk.TextIter = undefined;
+    buffer.getStartIter(&start_iter);
+    buffer.placeCursor(&start_iter);
+    state.code_view.scrollToMark(buffer.getInsert(), 0.0, 1, 0.0, 0.0);
+
+    if (modified) {
+        tabs.markModified();
+    } else {
+        tabs.markSaved();
+    }
+
+    if (state.config.editor.show_line_numbers) {
+        gutter.setWidthForView(state.code_view, state.gutter, state.config);
+        gutter.queueRedrawSoon();
+    }
+
+    _ = state.code_view.as(gtk.Widget).grabFocus();
+    if (vim_mode_enabled) {
+        vim.init(state.code_view);
+    }
+
+    syntax.scheduleHighlight();
+}
+
 pub fn applyConfig(cfg: *const config.Config) void {
     const state = app.state orelse return;
     applyEditorConfig(state.code_view, state.gutter, cfg);
