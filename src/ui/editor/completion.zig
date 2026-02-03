@@ -37,6 +37,8 @@ const CompletionState = struct {
     cycle_prefix: ?[]u8,
     last_index: i32,
     locked_x: ?f64, // X position locked during cycling to prevent jumping
+    index_pending: bool,
+    popup_refresh_pending: bool,
 
     fn deinit(self: *CompletionState) void {
         self.completer.deinit();
@@ -105,6 +107,8 @@ pub fn init(view: *gtk.TextView, fixed: *gtk.Fixed, cfg: *const config.Config) v
         .cycle_prefix = null,
         .last_index = -1,
         .locked_x = null,
+        .index_pending = false,
+        .popup_refresh_pending = false,
     };
     state = st;
 
@@ -140,6 +144,8 @@ pub fn init(view: *gtk.TextView, fixed: *gtk.Fixed, cfg: *const config.Config) v
         st,
         .{},
     );
+
+    rebuildIndex(st);
 }
 
 /// Updates completion state with new configuration.
@@ -225,8 +231,7 @@ fn onBufferChanged(_: *gtk.TextBuffer, _: *gtk.TextBuffer) callconv(.c) void {
     } else {
         resetCycle(st);
     }
-    rebuildIndex(st);
-    updatePopup(st);
+    scheduleRebuildIndex(st, true);
 }
 
 fn onCursorMoved(
@@ -261,6 +266,31 @@ fn rebuildIndex(st: *CompletionState) void {
 
     const text = std.mem.span(text_ptr);
     st.completer.indexText(text);
+}
+
+fn scheduleRebuildIndex(st: *CompletionState, refresh_popup: bool) void {
+    if (refresh_popup) st.popup_refresh_pending = true;
+    if (st.index_pending) return;
+    st.index_pending = true;
+
+    _ = glib.idleAddFull(
+        glib.PRIORITY_DEFAULT_IDLE,
+        struct {
+            fn cb(data: ?*anyopaque) callconv(.c) c_int {
+                const st_ptr: *CompletionState = @ptrCast(@alignCast(data orelse return 0));
+                if (state == null or state.? != st_ptr) return 0;
+                st_ptr.index_pending = false;
+                rebuildIndex(st_ptr);
+                if (st_ptr.popup_refresh_pending) {
+                    st_ptr.popup_refresh_pending = false;
+                    updatePopup(st_ptr);
+                }
+                return 0;
+            }
+        }.cb,
+        st,
+        null,
+    );
 }
 
 fn updatePopup(st: *CompletionState) void {

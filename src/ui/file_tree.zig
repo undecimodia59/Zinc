@@ -10,6 +10,13 @@ const config = @import("../utils/config.zig");
 
 const tree_css_class: [:0]const u8 = "zinc-file-tree";
 
+const COL_ICON: i32 = 0;
+const COL_DISPLAY: i32 = 1;
+const COL_RAW: i32 = 2;
+const COL_IS_DIR: i32 = 3;
+const COL_LOADED: i32 = 4;
+const COL_PLACEHOLDER: i32 = 5;
+
 // Track CSS provider to avoid leaking on repeated applyConfig calls
 var tree_css_provider: ?*gtk.CssProvider = null;
 
@@ -26,13 +33,16 @@ pub fn create() FileTreeResult {
     tree_scroll.as(gtk.Widget).setSizeRequest(150, -1);
     tree_scroll.as(gtk.Widget).setHexpand(0);
 
-    // Create tree store with columns: icon, display name, raw name
+    // Columns: icon, display name, raw name, is_dir, loaded, placeholder
     var col_types = [_]usize{
         gobject.ext.types.string,
         gobject.ext.types.string,
         gobject.ext.types.string,
+        gobject.ext.types.string,
+        gobject.ext.types.string,
+        gobject.ext.types.string,
     };
-    const tree_store = gtk.TreeStore.newv(3, &col_types);
+    const tree_store = gtk.TreeStore.newv(6, &col_types);
 
     const file_tree = gtk.TreeView.newWithModel(tree_store.as(gtk.TreeModel));
     file_tree.setHeadersVisible(0);
@@ -46,8 +56,8 @@ pub fn create() FileTreeResult {
     column.setTitle("Name");
     column.packStart(icon_renderer.as(gtk.CellRenderer), 0);
     column.packStart(name_renderer.as(gtk.CellRenderer), 1);
-    column.addAttribute(icon_renderer.as(gtk.CellRenderer), "text", 0);
-    column.addAttribute(name_renderer.as(gtk.CellRenderer), "text", 1);
+    column.addAttribute(icon_renderer.as(gtk.CellRenderer), "text", COL_ICON);
+    column.addAttribute(name_renderer.as(gtk.CellRenderer), "text", COL_DISPLAY);
     _ = file_tree.appendColumn(column);
 
     tree_scroll.setChild(file_tree.as(gtk.Widget));
@@ -132,6 +142,13 @@ pub fn connectSignals(tree_view: *gtk.TreeView) void {
         tree_view,
         .{},
     );
+    _ = gtk.TreeView.signals.row_expanded.connect(
+        tree_view,
+        *gtk.TreeView,
+        &onRowExpanded,
+        tree_view,
+        .{},
+    );
 
     const key_controller = gtk.EventControllerKey.new();
     tree_view.as(gtk.Widget).addController(key_controller.as(gtk.EventController));
@@ -203,6 +220,17 @@ fn onTreeKeyPress(
     }
 
     return 0;
+}
+
+fn onRowExpanded(
+    tree_view: *gtk.TreeView,
+    iter: *gtk.TreeIter,
+    _: *gtk.TreePath,
+    _: *gtk.TreeView,
+) callconv(.c) void {
+    _ = tree_view;
+    const s = app.state orelse return;
+    loadChildrenForIter(s, iter);
 }
 
 fn setCursorAndScroll(tree_view: *gtk.TreeView, path: *gtk.TreePath) void {
@@ -308,8 +336,8 @@ pub fn openFolder(path: []const u8) void {
     const title = std.fmt.bufPrintZ(&title_buf, "Zinc IDE - {s}", .{basename}) catch "Zinc IDE";
     state.setTitle(title);
 
-    // Populate tree
-    populateTree(abs_path, null, 0);
+    // Populate tree (lazy)
+    populateChildren(abs_path, null, true);
 
     // Update status
     var status_buf: [512:0]u8 = undefined;
@@ -331,7 +359,7 @@ pub fn refreshDisplay() void {
     collectExpandedPaths(s, &expanded, null);
 
     s.tree_store.clear();
-    populateTree(base_path, null, 0);
+    populateChildren(base_path, null, true);
 
     // Restore expanded paths
     restoreExpandedPaths(s, &expanded, null);
@@ -406,7 +434,7 @@ fn buildRelativePath(s: *app.AppState, iter: *gtk.TreeIter) ?[]u8 {
 
     // Get current item's name
     var value: gobject.Value = std.mem.zeroes(gobject.Value);
-    model.getValue(iter, 2, &value);
+    model.getValue(iter, COL_RAW, &value);
     const name_ptr = value.getString() orelse {
         value.unset();
         return null;
@@ -427,7 +455,7 @@ fn buildRelativePath(s: *app.AppState, iter: *gtk.TreeIter) ?[]u8 {
     while (model.iterParent(&parent, &current) != 0) {
         current = parent;
         var pval: gobject.Value = std.mem.zeroes(gobject.Value);
-        model.getValue(&current, 2, &pval);
+        model.getValue(&current, COL_RAW, &pval);
         const pname_ptr = pval.getString();
         if (pname_ptr) |ptr| {
             const pname = s.allocator.dupe(u8, std.mem.span(ptr)) catch {
@@ -448,14 +476,82 @@ fn buildRelativePath(s: *app.AppState, iter: *gtk.TreeIter) ?[]u8 {
     return std.mem.join(s.allocator, "/", parts.items) catch null;
 }
 
+fn buildFullPathFromIter(s: *app.AppState, iter: *gtk.TreeIter) ?[]u8 {
+    const base_path = s.current_path orelse return null;
+    const rel_path = buildRelativePath(s, iter) orelse return null;
+    defer s.allocator.free(rel_path);
+
+    const max_len = base_path.len + 1 + rel_path.len;
+    if (max_len >= std.fs.max_path_bytes) return null;
+
+    var buf: [std.fs.max_path_bytes]u8 = undefined;
+    var len: usize = 0;
+
+    @memcpy(buf[0..base_path.len], base_path);
+    len = base_path.len;
+    buf[len] = '/';
+    len += 1;
+    @memcpy(buf[len .. len + rel_path.len], rel_path);
+    len += rel_path.len;
+
+    return s.allocator.dupe(u8, buf[0..len]) catch null;
+}
+
+fn loadChildrenForIter(s: *app.AppState, iter: *gtk.TreeIter) void {
+    const model = s.tree_store.as(gtk.TreeModel);
+    if (!isFlagSet(model, iter, COL_IS_DIR)) return;
+    if (isFlagSet(model, iter, COL_LOADED)) return;
+
+    clearChildren(s, iter);
+
+    const full_path = buildFullPathFromIter(s, iter) orelse return;
+    defer s.allocator.free(full_path);
+
+    populateChildren(full_path, iter, true);
+    setStringColumn(s.tree_store, iter, COL_LOADED, "1");
+}
+
+fn setStringColumn(store: *gtk.TreeStore, iter: *gtk.TreeIter, column: i32, value: [:0]const u8) void {
+    var v: gobject.Value = std.mem.zeroes(gobject.Value);
+    _ = v.init(gobject.ext.types.string);
+    v.setString(value.ptr);
+    store.setValue(iter, column, &v);
+    v.unset();
+}
+
+fn isFlagSet(model: *gtk.TreeModel, iter: *gtk.TreeIter, column: i32) bool {
+    var value: gobject.Value = std.mem.zeroes(gobject.Value);
+    model.getValue(iter, column, &value);
+    const ptr = value.getString();
+    const result = if (ptr) |p| std.mem.eql(u8, std.mem.span(p), "1") else false;
+    value.unset();
+    return result;
+}
+
+fn clearChildren(s: *app.AppState, parent: *gtk.TreeIter) void {
+    var child: gtk.TreeIter = undefined;
+    if (s.tree_store.as(gtk.TreeModel).iterChildren(&child, parent) == 0) return;
+    while (s.tree_store.remove(&child) != 0) {}
+}
+
+fn addPlaceholderChild(s: *app.AppState, parent: *gtk.TreeIter) void {
+    var child: gtk.TreeIter = undefined;
+    s.tree_store.append(&child, parent);
+
+    setStringColumn(s.tree_store, &child, COL_ICON, "");
+    setStringColumn(s.tree_store, &child, COL_DISPLAY, " ");
+    setStringColumn(s.tree_store, &child, COL_RAW, "");
+    setStringColumn(s.tree_store, &child, COL_IS_DIR, "0");
+    setStringColumn(s.tree_store, &child, COL_LOADED, "1");
+    setStringColumn(s.tree_store, &child, COL_PLACEHOLDER, "1");
+}
+
 const TreeEntry = struct {
     name: []const u8,
     kind: std.fs.Dir.Entry.Kind,
 };
 
-fn populateTree(path: []const u8, parent: ?*gtk.TreeIter, depth: u32) void {
-    if (depth > 10) return;
-
+fn populateChildren(path: []const u8, parent: ?*gtk.TreeIter, lazy: bool) void {
     const state = app.state orelse return;
 
     var dir = std.fs.cwd().openDir(path, .{ .iterate = true }) catch return;
@@ -529,24 +625,41 @@ fn populateTree(path: []const u8, parent: ?*gtk.TreeIter, depth: u32) void {
         var value: gobject.Value = std.mem.zeroes(gobject.Value);
         _ = value.init(gobject.ext.types.string);
         value.setString(@ptrCast(&icon_z));
-        state.tree_store.setValue(&tree_iter, 0, &value);
+        state.tree_store.setValue(&tree_iter, COL_ICON, &value);
         value.unset();
 
         _ = value.init(gobject.ext.types.string);
         value.setString(@ptrCast(&display_z));
-        state.tree_store.setValue(&tree_iter, 1, &value);
+        state.tree_store.setValue(&tree_iter, COL_DISPLAY, &value);
         value.unset();
 
         _ = value.init(gobject.ext.types.string);
         value.setString(@ptrCast(&raw_z));
-        state.tree_store.setValue(&tree_iter, 2, &value);
+        state.tree_store.setValue(&tree_iter, COL_RAW, &value);
         value.unset();
 
-        // Recursively add subdirectories (limited depth)
-        if (entry.kind == .directory and depth < 10) {
-            var subpath_buf: [std.fs.max_path_bytes]u8 = undefined;
-            const subpath = std.fmt.bufPrint(&subpath_buf, "{s}/{s}", .{ path, entry.name }) catch continue;
-            populateTree(subpath, &tree_iter, depth + 1);
+        // Flags
+        const is_dir_str: [:0]const u8 = if (is_dir) "1" else "0";
+        const loaded_str: [:0]const u8 = if (is_dir) (if (lazy) "0" else "1") else "1";
+        const placeholder_str: [:0]const u8 = "0";
+
+        _ = value.init(gobject.ext.types.string);
+        value.setString(is_dir_str.ptr);
+        state.tree_store.setValue(&tree_iter, COL_IS_DIR, &value);
+        value.unset();
+
+        _ = value.init(gobject.ext.types.string);
+        value.setString(loaded_str.ptr);
+        state.tree_store.setValue(&tree_iter, COL_LOADED, &value);
+        value.unset();
+
+        _ = value.init(gobject.ext.types.string);
+        value.setString(placeholder_str.ptr);
+        state.tree_store.setValue(&tree_iter, COL_PLACEHOLDER, &value);
+        value.unset();
+
+        if (is_dir and lazy) {
+            addPlaceholderChild(state, &tree_iter);
         }
     }
 }
@@ -562,9 +675,14 @@ fn onRowActivated(
     var tree_iter: gtk.TreeIter = undefined;
     if (state.tree_store.as(gtk.TreeModel).getIter(&tree_iter, gtk_path) == 0) return;
 
+    // Ignore placeholder rows
+    if (isFlagSet(state.tree_store.as(gtk.TreeModel), &tree_iter, COL_PLACEHOLDER)) {
+        return;
+    }
+
     // Get the raw name from the tree
     var value: gobject.Value = std.mem.zeroes(gobject.Value);
-    state.tree_store.as(gtk.TreeModel).getValue(&tree_iter, 2, &value);
+    state.tree_store.as(gtk.TreeModel).getValue(&tree_iter, COL_RAW, &value);
 
     const name_ptr = value.getString();
     if (name_ptr == null) {
@@ -598,7 +716,7 @@ fn onRowActivated(
     while (state.tree_store.as(gtk.TreeModel).iterParent(&parent_iter, &current_iter) != 0) {
         current_iter = parent_iter;
         var parent_value: gobject.Value = std.mem.zeroes(gobject.Value);
-        state.tree_store.as(gtk.TreeModel).getValue(&current_iter, 2, &parent_value);
+        state.tree_store.as(gtk.TreeModel).getValue(&current_iter, COL_RAW, &parent_value);
         const parent_name_ptr = parent_value.getString();
         if (parent_name_ptr) |ptr| {
             const parent_name = std.mem.span(ptr);
@@ -640,6 +758,11 @@ fn onRowActivated(
     if (stat.kind == .file) {
         editor.loadFile(full_path);
     } else if (stat.kind == .directory) {
+        // Ensure children are loaded before first expand.
+        if (!isFlagSet(state.tree_store.as(gtk.TreeModel), &tree_iter, COL_LOADED)) {
+            loadChildrenForIter(state, &tree_iter);
+        }
+
         // Toggle expand/collapse for directories
         if (tree_view.rowExpanded(gtk_path) != 0) {
             _ = tree_view.collapseRow(gtk_path);

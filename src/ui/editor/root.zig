@@ -141,6 +141,7 @@ pub fn create(cfg: *const config.Config) EditorResult {
 
     initLineHighlight(line_highlight, code_view, code_scroll);
     line_highlight.as(gtk.Widget).setVisible(@intFromBool(cfg.editor.highlight_current_line));
+    initSyntaxScrollHighlight(code_scroll);
 
     root.append(line_gutter.as(gtk.Widget));
     root.append(overlay.as(gtk.Widget));
@@ -255,7 +256,7 @@ pub fn loadOrCreateFile(path: []const u8) void {
             ) catch "New file";
             state.setStatus(status);
 
-            syntax.scheduleHighlight();
+            syntax.scheduleHighlightFull();
             return;
         },
         else => {
@@ -305,7 +306,7 @@ pub fn loadOrCreateFile(path: []const u8) void {
     ) catch "File loaded";
     state.setStatus(status);
 
-    syntax.scheduleHighlight();
+    syntax.scheduleHighlightFull();
 }
 
 /// Get current buffer content.
@@ -371,7 +372,7 @@ pub fn loadFromContent(content: []const u8, path: ?[]const u8, modified: bool) v
         vim.init(state.code_view);
     }
 
-    syntax.scheduleHighlight();
+    syntax.scheduleHighlightFull();
 }
 
 pub fn applyConfig(cfg: *const config.Config) void {
@@ -449,7 +450,7 @@ pub fn saveFileAs(path: []const u8) void {
     saveCurrentFile();
 
     // Re-highlight
-    syntax.scheduleHighlight();
+    syntax.scheduleHighlightFull();
 }
 
 /// Mark buffer as modified when content changes.
@@ -492,14 +493,20 @@ fn onEditorKeyPress(
     if (keyval == 0xff09) {
         if (state.config.editor.use_spaces) {
             const tab_width = state.config.editor.tab_width;
+            const count: usize = @intCast(tab_width);
 
             // Create spaces string (sentinel-terminated)
-            var spaces_z: [9:0]u8 = undefined;
-            const count: usize = @min(tab_width, 8);
-            @memset(spaces_z[0..count], ' ');
-            spaces_z[count] = 0;
-
-            buffer.insertAtCursor(@ptrCast(&spaces_z), @intCast(count));
+            var spaces_stack: [32:0]u8 = undefined;
+            if (count <= 32) {
+                @memset(spaces_stack[0..count], ' ');
+                spaces_stack[count] = 0;
+                buffer.insertAtCursor(@ptrCast(&spaces_stack), @intCast(count));
+            } else {
+                const spaces_z = state.allocator.allocSentinel(u8, count, 0) catch return 0;
+                defer state.allocator.free(spaces_z);
+                @memset(spaces_z[0..count], ' ');
+                buffer.insertAtCursor(@ptrCast(spaces_z.ptr), @intCast(count));
+            }
 
             return 1; // Handled
         }
@@ -627,6 +634,21 @@ fn initLineHighlight(
         area,
         .{},
     );
+}
+
+fn initSyntaxScrollHighlight(scroll: *gtk.ScrolledWindow) void {
+    const vadj = scroll.getVadjustment();
+    _ = gtk.Adjustment.signals.value_changed.connect(
+        vadj,
+        *gtk.ScrolledWindow,
+        &queueSyntaxHighlightFromAdj,
+        scroll,
+        .{},
+    );
+}
+
+fn queueSyntaxHighlightFromAdj(_: *gtk.Adjustment, _: *gtk.ScrolledWindow) callconv(.c) void {
+    syntax.scheduleHighlight();
 }
 
 fn queueLineHighlightFromAdj(_: *gtk.Adjustment, area: *gtk.DrawingArea) callconv(.c) void {

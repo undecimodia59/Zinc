@@ -265,9 +265,15 @@ pub fn saveCurrentBufferState(s: *app.AppState) void {
     _ = s.code_view.getIterAtLocation(&top_iter, visible.f_x, visible.f_y);
     buf.scroll_top = @intCast(@max(0, top_iter.getLine()));
 
-    if (editor.getContent(alloc)) |content| {
-        if (buf.content) |old| alloc.free(old);
-        buf.content = content;
+    const needs_content = buf.modified or buf.path == null;
+    if (needs_content) {
+        if (editor.getContent(alloc)) |content| {
+            if (buf.content) |old| alloc.free(old);
+            buf.content = content;
+        }
+    } else if (buf.content) |old| {
+        alloc.free(old);
+        buf.content = null;
     }
 }
 

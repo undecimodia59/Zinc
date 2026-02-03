@@ -4,6 +4,7 @@
 
 const std = @import("std");
 const gtk = @import("gtk");
+const gdk = @import("gdk4");
 const gobject = @import("gobject");
 const glib = @import("glib");
 
@@ -75,6 +76,7 @@ const State = struct {
     buffer: ?*gtk.TextBuffer = null,
     language: ?*const Language = null,
     idle_pending: bool = false,
+    pending_full: bool = false,
 };
 
 var state: State = .{};
@@ -83,7 +85,7 @@ pub fn init(view: *gtk.TextView, cfg: *const config.Config) void {
     state.view = view;
     state.buffer = view.getBuffer();
     ensureTags(cfg);
-    scheduleHighlight();
+    scheduleHighlightFull();
 }
 
 pub fn deinit() void {
@@ -106,6 +108,10 @@ pub fn setLanguageFromPath(path: []const u8) void {
         var end_iter: gtk.TextIter = undefined;
         buffer.getBounds(&start_iter, &end_iter);
         clearTags(buffer, &start_iter, &end_iter);
+        state.pending_full = false;
+        state.idle_pending = false;
+    } else {
+        scheduleHighlightFull();
     }
 }
 
@@ -113,6 +119,30 @@ pub fn scheduleHighlight() void {
     if (state.buffer == null or state.language == null) return;
     if (state.idle_pending) return;
     state.idle_pending = true;
+    state.pending_full = false;
+
+    _ = glib.idleAddFull(
+        glib.PRIORITY_DEFAULT_IDLE,
+        struct {
+            fn cb(_: ?*anyopaque) callconv(.c) c_int {
+                state.idle_pending = false;
+                highlightNow();
+                return 0;
+            }
+        }.cb,
+        null,
+        null,
+    );
+}
+
+pub fn scheduleHighlightFull() void {
+    if (state.buffer == null or state.language == null) return;
+    if (state.idle_pending) {
+        state.pending_full = true;
+        return;
+    }
+    state.idle_pending = true;
+    state.pending_full = true;
 
     _ = glib.idleAddFull(
         glib.PRIORITY_DEFAULT_IDLE,
@@ -135,15 +165,33 @@ pub fn applyTheme(cfg: *const config.Config) void {
 fn highlightNow() void {
     const buffer = state.buffer orelse return;
     const lang = state.language orelse return;
+    const full = state.pending_full;
+    state.pending_full = false;
+
+    var full_start: gtk.TextIter = undefined;
+    var full_end: gtk.TextIter = undefined;
+    buffer.getBounds(&full_start, &full_end);
 
     var start_iter: gtk.TextIter = undefined;
     var end_iter: gtk.TextIter = undefined;
-    buffer.getBounds(&start_iter, &end_iter);
+    if (full or state.view == null) {
+        start_iter = full_start;
+        end_iter = full_end;
+    } else {
+        const view = state.view.?;
+        var rect: gdk.Rectangle = undefined;
+        view.getVisibleRect(&rect);
+        _ = view.getIterAtLocation(&start_iter, rect.f_x, rect.f_y);
+        _ = view.getIterAtLocation(&end_iter, rect.f_x + rect.f_width, rect.f_y + rect.f_height);
+        start_iter.setLineOffset(0);
+        _ = end_iter.forwardLine();
+        end_iter.setLineOffset(0);
+    }
 
     // Clear existing syntax tags.
     clearTags(buffer, &start_iter, &end_iter);
 
-    const c_text = buffer.getText(&start_iter, &end_iter, 0);
+    const c_text = buffer.getText(&full_start, &full_end, 0);
     defer glib.free(@ptrCast(c_text));
 
     const source = std.mem.span(c_text);
@@ -151,7 +199,15 @@ fn highlightNow() void {
     const tokens = lang.tokenize(std.heap.c_allocator, source) catch return;
     defer std.heap.c_allocator.free(tokens);
 
+    const start_line: i32 = start_iter.getLine();
+    const end_line: i32 = end_iter.getLine();
+
     for (tokens) |tok| {
+        if (tok.end_line < @as(u32, @intCast(start_line)) or
+            tok.start_line > @as(u32, @intCast(end_line)))
+        {
+            continue;
+        }
         const tag_name = tagName(tok.kind) orelse continue;
         _ = buffer.getIterAtLineIndex(&start_iter, @intCast(tok.start_line), @intCast(tok.start_col));
         _ = buffer.getIterAtLineIndex(&end_iter, @intCast(tok.end_line), @intCast(tok.end_col));
